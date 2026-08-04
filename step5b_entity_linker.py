@@ -4,8 +4,8 @@ docs/superpowers/specs/2026-07-24-entity-linking-design.md'deki tasarima gore.""
 from google.genai import types
 from pydantic import BaseModel
 
-import gemini_retry
-import gemini_usage
+from backend.shared import gemini_retry
+from backend.shared import gemini_usage
 
 DEFAULT_MODEL = "gemini-flash-lite-latest"  # step2_extractor.py ile ayni varsayilan
 

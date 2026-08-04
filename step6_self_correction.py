@@ -14,8 +14,8 @@ from sentence_transformers import SentenceTransformer
 from typing import List, Literal
 
 from step3_graph_writer import RELATION_TYPES
-import gemini_retry
-import gemini_usage
+from backend.shared import gemini_retry
+from backend.shared import gemini_usage
 
 STAGE1_MODEL = "gemini-flash-lite-latest"
 DEBATE_MODEL = "gemini-flash-latest"

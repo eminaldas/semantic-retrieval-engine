@@ -25,7 +25,7 @@ import step5b_entity_linker
 import step1_chunker
 import manage_sources
 import step5d_conversation_memory as conv
-import gemini_usage
+from backend.shared import gemini_usage
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHUNKS_FILE = os.path.join(BASE_DIR, "artifacts", "chunks.jsonl")

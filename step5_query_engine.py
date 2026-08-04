@@ -16,8 +16,8 @@ from sentence_transformers import CrossEncoder, SentenceTransformer
 import step5b_entity_linker
 import step5c_risk_ranking as risk_ranking
 import step5d_conversation_memory as conv
-import gemini_retry
-import gemini_usage
+from backend.shared import gemini_retry
+from backend.shared import gemini_usage
 
 EMBEDDING_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"  # step1/step4 ile ayni model
 CROSS_ENCODER_MODEL_NAME = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"  # cok dilli (Turkce dahil)

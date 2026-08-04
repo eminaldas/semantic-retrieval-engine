@@ -13,8 +13,8 @@ from typing import List
 from google.genai import types
 from pydantic import BaseModel
 
-import gemini_retry
-import gemini_usage
+from backend.shared import gemini_retry
+from backend.shared import gemini_usage
 
 
 def load_golden_set(path):

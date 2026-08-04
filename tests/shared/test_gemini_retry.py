@@ -3,7 +3,7 @@ import time
 import pytest
 from google.genai import errors
 
-import gemini_retry
+from backend.shared import gemini_retry
 
 
 class FakeResponse:

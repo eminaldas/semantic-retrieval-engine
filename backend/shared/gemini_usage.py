@@ -6,7 +6,9 @@ import json
 import os
 from datetime import datetime, timezone
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+from backend.shared.paths import PROJECT_ROOT
+
+BASE_DIR = PROJECT_ROOT
 DEFAULT_LOG_PATH = os.path.join(BASE_DIR, "artifacts", "gemini_usage_log.jsonl")
 
 # Kaynak: https://ai.google.dev/gemini-api/docs/pricing (2026-08-04'te dogrulandi,

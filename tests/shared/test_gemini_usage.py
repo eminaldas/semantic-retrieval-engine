@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-import gemini_usage
+from backend.shared import gemini_usage
 
 
 class FakeUsageMetadata:

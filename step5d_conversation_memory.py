@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 from google.genai import types
 from pydantic import BaseModel
 
-import gemini_retry
-import gemini_usage
+from backend.shared import gemini_retry
+from backend.shared import gemini_usage
 
 DEFAULT_MODEL = "gemini-flash-lite-latest"  # step2/step5b ile ayni varsayilan
 WINDOW_SIZE = 5  # ham tutulan son tur sayisi - bunu asan turlar ozete katilir

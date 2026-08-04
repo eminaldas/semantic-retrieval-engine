@@ -13,8 +13,8 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
-import gemini_retry
-import gemini_usage
+from backend.shared import gemini_retry
+from backend.shared import gemini_usage
 
 # Ontology v0.1 (docs/01_architecture_v0.1.md #4) - bu listeler dışına cikilamaz.
 EntityType = Literal[
