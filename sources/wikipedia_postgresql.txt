@@ -1,0 +1,13 @@
+PostgreSQL ya da Postgres, özgür ve açık kaynak kodlu, SQL destekli bir ilişkisel veritabanı yönetim sistemidir.
+İsmi konusunda, başlarda Kaliforniya Üniversitesi'nde geliştirilen Ingres veritabanının devamı niteliğinde olduğu için bu isme atıfta bulunularak POSTGRES adını aldı. 1996 yılında SQL desteğini vurgulamak maksatlı PostgreSQL şeklinde değiştirildi. Son olarak 2007 yılında isim değişikliği konusu topluluğun tartışmasına açıldı ve geliştirme ekibi PostgreSQL isminin devam etmesine, Postgres isminin de takma isim olarak kalmasına karar verdi.
+
+Tarihçe: 1977-1986: PostgreSQL'in temelleri, Kaliforniya Üniversitesi Berkeley'deki Computer Systems Research Group (CSRG) tarafından atıldı. Michael Stonebraker liderliğindeki ekip, Ingres veritabanı sistemini geliştirmişti ve bu çalışma, sonraki PostgreSQL projesinin temelini oluşturdu.
+1986-1994: Yapılan Veritabanı Yönetim Sistemi çalışmaları Postgres adını aldı ve Illustra tarafından satın alınıp Informix olarak geliştirilmeye devam edildi.
+1995: PostgreSQL projesi başlatıldı. Projenin amacı, Ingres'in temel fikirlerini sürdürmek ve daha açık ve özgür bir veritabanı yönetim sistemi oluşturmaktı. İlk olarak Postgres95 olarak adlandırıldı.
+1996: Postgres95, SQL standardını desteklemesiyle PostgreSQL olarak yeniden adlandırıldı.
+2000: PostgreSQL 7.0 sürümü piyasaya sürüldü. Bu sürüm, özellikle veri bütünlüğü, dış anahtarlar, yabancı anahtarlar ve uzatılabilirlik gibi özelliklerde büyük geliştirmeler içeriyordu.
+2005: PostgreSQL 8.0 sürümü yayınlandı. Bu sürüm, kayıp güncelleme sorunlarını çözmek için "Multi-Version Concurrency Control (MVCC)" sistemi sunarak veritabanının aynı anda birden fazla işlemi destekleme yeteneğini artırdı.
+2010: PostgreSQL 9.0 sürümü piyasaya sürüldü. Bu sürüm, özellikle hedeflenen sorgular, genişletilmiş depolama yetenekleri ve daha fazla MVCC geliştirmeleri içeriyordu.
+2014: PostgreSQL 9.4 sürümü yayınlandı ve JSON veri tipi ve hızlı UPSERT operasyonları gibi özellikleri içeriyordu.
+2016: PostgreSQL 9.6 sürümü piyasaya sürüldü ve daha fazla paralel sorgu işleme yetenekleri, parçalı tablo depolama ve diğer geliştirmelerle geldi.
+2020: PostgreSQL 13 sürümü yayınlandı. Bu sürüm, genellikle performans, güvenlik ve yönetilebilirlik geliştirmelerini içeriyordu.

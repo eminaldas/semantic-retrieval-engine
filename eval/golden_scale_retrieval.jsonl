@@ -1,0 +1,12 @@
+{"question": "BSD hangi universitenin kaynak kodu dagitimidir?", "expected_source_id": "bsd.txt"}
+{"question": "Botnet kelimesi hangi iki kelimenin birlesiminden olusur?", "expected_source_id": "botnet.txt"}
+{"question": "AmigaOS'un cekirdegi nasil bir yapiya sahiptir?", "expected_source_id": "amigaos.txt"}
+{"question": "Birinci normal formu ilk kez kim tanimlamistir?", "expected_source_id": "birinci_normal_form.txt"}
+{"question": "Boyce-Codd normal formu kimler tarafindan gelistirilmistir?", "expected_source_id": "boyce_codd_normal_formu.txt"}
+{"question": "CP/M isletim sistemini kim gelistirmistir?", "expected_source_id": "cp_m.txt"}
+{"question": "Dagitik veritabani yonetim sistemi nedir, ne ise yarar?", "expected_source_id": "dağıtık_veritabanı_yönetim_sistemi.txt"}
+{"question": "AT Protocol baslangicta hangi sirket tarafindan gelistirilmeye baslanmistir?", "expected_source_id": "at_protocol.txt"}
+{"question": "Arayuz Ayrim Prensibinin ingilizce kisaltmasi nedir?", "expected_source_id": "arayüz_ayrımı_ilkesi.txt"}
+{"question": "Belge odakli veritabanlari NoSQL veritabanlarinin hangi kategorisine girer?", "expected_source_id": "belge_odaklı_veritabanı.txt"}
+{"question": "VTYS'nin ingilizce acilimi nedir?", "expected_source_id": "veritabanı_yönetim_sistemi.txt"}
+{"question": "Veritabani ornegi olarak telefonlarda gunluk hayatta kullanilan sey nedir?", "expected_source_id": "veritabanı.txt"}

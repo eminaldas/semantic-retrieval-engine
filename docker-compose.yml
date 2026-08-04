@@ -1,0 +1,25 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: otonom_neo4j
+    ports:
+      - "7474:7474" # Browser UI
+      - "7687:7687" # Bolt (driver baglantisi)
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD}
+      - NEO4J_PLUGINS=["graph-data-science"]
+    volumes:
+      - neo4j_data:/data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: otonom_qdrant
+    ports:
+      - "6333:6333" # REST API
+      - "6334:6334" # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  neo4j_data:
+  qdrant_data:

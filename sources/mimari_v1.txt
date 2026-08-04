@@ -1,0 +1,10 @@
+PostgreSQL veri tabanı, okuma performansını artırmak için paylaşımlı bellek (shared buffers) mimarisini kullanır.
+ Shared buffers dolduğunda, arka planda çalışan Checkpoint süreci otonom olarak devreye girer.
+  Checkpoint süreci, bellekteki kirli sayfaları (dirty pages) fiziksel diske yazar.
+   Bu işlem sırasında diske aşırı I/O yükü biner.
+   Yüksek I/O yükü, anlık gelen Select sorgularını yavaşlatır ve genel performansı düşürür. 
+
+Veri kaybını önlemek için PostgreSQL, veriyi diske yazmadan önce her zaman WAL (Write-Ahead Logging) mekanizmasını tetikler.
+ WAL dosyaları diske sıralı yazıldığı için I/O darboğazı yaratmadan çok hızlı çalışır.
+  Ancak yoğun işlem (transaction) yükü altında, birden fazla servis aynı tabloyu aynı anda güncellemeye çalışırsa satır seviyesinde kilitlenmeler (deadlock) meydana gelebilir.
+   Auth servisi çökerse oturumlar kapanır ve Gateway istekleri askıya alır. Gateway kilitlendiğinde ise ödeme veri tabanında kuyruk birikmesi yaşanır.

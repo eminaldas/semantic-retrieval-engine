@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Kontrol Odası — Dashboard</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #f5f5f5; color: #111; }
+  h1 { font-size: 20px; margin: 0 0 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .panel { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 12px; overflow: auto; }
+  .panel h2 { font-size: 15px; margin: 0 0 8px; }
+  #graph { width: 100%; height: 420px; border: 1px solid #ccc; }
+  #log-list, #query-result { max-height: 400px; overflow-y: auto; }
+  .log-entry { border-bottom: 1px solid #eee; padding: 6px 0; cursor: pointer; }
+  .log-entry .badge { font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  .badge-CONTRADICTS { background: #fdd; color: #900; }
+  .badge-CONSISTENT { background: #dfd; color: #060; }
+  .badge-COEXISTS { background: #ffd; color: #660; }
+  .log-detail { display: none; margin-top: 6px; font-size: 13px; white-space: pre-wrap; }
+  .log-entry.expanded .log-detail { display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid #eee; }
+  form label { display: block; margin-top: 6px; font-size: 13px; }
+  form input { width: 100%; box-sizing: border-box; padding: 4px; }
+  button { margin-top: 10px; padding: 6px 14px; cursor: pointer; }
+  .evidence-item { border-top: 1px solid #eee; padding: 6px 0; font-size: 13px; }
+  .risk-LOW { color: #060; } .risk-MEDIUM { color: #a60; } .risk-HIGH { color: #900; }
+</style>
+</head>
+<body>
+<h1>Otonom Semantik Bilgi Ağı — Kontrol Odası</h1>
+<div class="grid">
+
+  <div class="panel">
+    <h2>Graf Görünümü <button id="refresh-graph">Yenile</button></h2>
+    <div id="graph"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Self-Correction Log</h2>
+    <div id="log-list">Yükleniyor...</div>
+  </div>
+
+  <div class="panel">
+    <h2>Pipeline Durumu</h2>
+    <div id="status">Yükleniyor...</div>
+  </div>
+
+  <div class="panel">
+    <h2>Maliyet/Kullanım</h2>
+    <div id="usage">Yükleniyor...</div>
+  </div>
+
+  <div class="panel">
+    <h2>Sorgu Aracı</h2>
+    <form id="query-form">
+      <label>Mod:
+        <select id="q-mode">
+          <option value="general" selected>general (genel soru-cevap)</option>
+          <option value="pair">pair (A→C nedensellik)</option>
+          <option value="open">open (açık uçlu risk sıralaması)</option>
+        </select>
+      </label>
+      <div id="q-pair-fields">
+        <label>Cause (entity_id): <input type="text" id="q-cause" value="MECHANISM::shared_buffers"></label>
+        <label>Target (entity_id): <input type="text" id="q-target" value="MECHANISM::checkpoint"></label>
+      </div>
+      <label>Soru: <input type="text" id="q-question" value="Shared buffers checkpoint sürecini nasıl tetikler?" required></label>
+      <label>Max hops (sadece pair): <input type="number" id="q-maxhops" value="1" min="1" max="10"></label>
+      <label>Top risk (sadece open): <input type="number" id="q-topk" value="5" min="1" max="20"></label>
+      <button type="submit">Sorgula</button>
+    </form>
+    <div id="query-result"></div>
+  </div>
+
+</div>
+
+<script>
+let network = null;
+
+async function loadGraph() {
+  const el = document.getElementById("graph");
+  const res = await fetch("/api/graph");
+  if (!res.ok) { el.textContent = "Hata: " + res.status; return; }
+  const data = await res.json();
+  const nodes = new vis.DataSet(data.nodes);
+  const edges = new vis.DataSet(data.edges.map(e => ({
+    from: e.from, to: e.to, label: e.label, arrows: "to",
+    dashes: e.status === "SUPERSEDED",
+    color: e.status === "SUPERSEDED" ? { color: "#bbbbbb", opacity: 0.5 } : undefined,
+  })));
+  if (network) network.destroy();
+  network = new vis.Network(el, { nodes, edges }, {
+    physics: { stabilization: true },
+    edges: { font: { size: 10 } },
+  });
+}
+
+document.getElementById("refresh-graph").addEventListener("click", loadGraph);
+
+function toggleLogEntry(el) {
+  el.classList.toggle("expanded");
+}
+
+async function loadSelfCorrectionLog() {
+  const el = document.getElementById("log-list");
+  const res = await fetch("/api/self-correction-log");
+  if (!res.ok) { el.textContent = "Hata: " + res.status; return; }
+  const entries = await res.json();
+  if (entries.length === 0) { el.textContent = "(henüz self-correction çalıştırılmadı)"; return; }
+  el.innerHTML = entries.map(e => {
+    const cls = e.stage1_classification;
+    let detail = `Sebep: ${e.stage1_reasoning}`;
+    if (cls === "CONTRADICTS") {
+      detail += `\n\nTez: ${e.thesis || "-"}\n\nAntitez: ${e.antithesis || "-"}\n\nHakem kararı: ${e.verdict || "-"}\nGerekçe: ${e.verdict_reasoning || "-"}`;
+    }
+    return `<div class="log-entry" onclick="toggleLogEntry(this)">
+      <span class="badge badge-${cls}">${cls}</span>
+      ${e.source_id} → ${e.target_id}
+      <div class="log-detail">${detail}</div>
+    </div>`;
+  }).join("");
+}
+
+async function loadPipelineStatus() {
+  const el = document.getElementById("status");
+  const res = await fetch("/api/pipeline-status");
+  if (!res.ok) { el.textContent = "Hata: " + res.status; return; }
+  const s = await res.json();
+  el.innerHTML = `
+    <table>
+      <tr><td>Chunk sayısı</td><td>${s.chunk_count}</td></tr>
+      <tr><td>Entity sayısı</td><td>${s.entity_count}</td></tr>
+      <tr><td>Relation sayısı</td><td>${s.relation_count}</td></tr>
+      <tr><td>Qdrant chunks points</td><td>${s.qdrant_chunks_points}</td></tr>
+      <tr><td>Qdrant entities points</td><td>${s.qdrant_entities_points}</td></tr>
+      <tr><td>Kaynak dosyalar</td><td>${s.source_files.join(", ")}</td></tr>
+    </table>`;
+}
+
+async function loadUsage() {
+  const el = document.getElementById("usage");
+  const res = await fetch("/api/usage");
+  if (!res.ok) { el.textContent = "Hata: " + res.status; return; }
+  const u = await res.json();
+  if (u.total_calls === 0) { el.textContent = "(henüz Gemini çağrısı kaydedilmedi)"; return; }
+  let html = `<table>
+    <tr><th>Adım</th><th>Çağrı</th><th>Token</th><th>Tahmini $</th></tr>`;
+  html += u.by_call_site.map(s => `
+    <tr>
+      <td>${s.call_site}</td>
+      <td>${s.calls}</td>
+      <td>${s.tokens}</td>
+      <td>${s.cost_usd === null ? "bilinmiyor" : "$" + s.cost_usd.toFixed(4)}</td>
+    </tr>`).join("");
+  const totalCostLabel = "~$" + u.total_cost_usd.toFixed(4) + (u.all_costs_known ? "" : " (bazıları bilinmiyor)");
+  html += `<tr><td><b>Toplam</b></td><td><b>${u.total_calls}</b></td><td><b>${u.total_tokens}</b></td><td><b>${totalCostLabel}</b></td></tr>`;
+  html += "</table>";
+  el.innerHTML = html;
+}
+
+function updateModeFields() {
+  const mode = document.getElementById("q-mode").value;
+  const pairFields = document.getElementById("q-pair-fields");
+  const causeInput = document.getElementById("q-cause");
+  const targetInput = document.getElementById("q-target");
+  pairFields.style.display = mode === "pair" ? "block" : "none";
+  causeInput.required = mode === "pair";
+  targetInput.required = mode === "pair";
+}
+document.getElementById("q-mode").addEventListener("change", updateModeFields);
+updateModeFields();
+
+document.getElementById("query-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const resultEl = document.getElementById("query-result");
+  resultEl.textContent = "Sorgulanıyor... (Gemini çağrısı birkaç saniye sürebilir)";
+  const mode = document.getElementById("q-mode").value;
+  const body = {
+    mode: mode,
+    question: document.getElementById("q-question").value,
+    max_hops: parseInt(document.getElementById("q-maxhops").value, 10),
+    top_risk: parseInt(document.getElementById("q-topk").value, 10),
+  };
+  if (mode === "pair") {
+    body.cause = document.getElementById("q-cause").value;
+    body.target = document.getElementById("q-target").value;
+  }
+  try {
+    const res = await fetch("/api/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      resultEl.textContent = "Hata: " + (err.detail || res.status);
+      return;
+    }
+    const data = await res.json();
+
+    let html = "<h3>ÇIKTI-1: Answer</h3>";
+    if (data.answer) {
+      html += `<p class="risk-${data.answer.risk_level}"><b>${data.answer.risk_level}</b></p>
+        <p>${data.answer.answer_text}</p>
+        <p><i>used_sources: ${data.answer.used_sources.join(", ")}</i></p>`;
+      if (data.citation_issues.length > 0) {
+        html += `<p style="color:#900">Uyarı: ${data.citation_issues.join(" | ")}</p>`;
+      }
+    } else {
+      html += `<p><i>${data.answer_error || "(cevap yok)"}</i></p>`;
+    }
+
+    if (data.mode === "pair") {
+      html += "<h3>ÇIKTI-2: Reasoning Path</h3>";
+      html += `<p>${data.structural.best_path_formatted || "(yok)"}</p>`;
+      html += `<p><small>${data.structural.candidate_paths.length} aday path bulundu.</small></p>`;
+    } else if (data.mode === "open") {
+      html += "<h3>Risk Sıralaması (PageRank)</h3>";
+      html += data.structural.ranked_nodes.map(n =>
+        `<p>score=${n.score.toFixed(2)} ${n.entity_id}</p>`
+      ).join("");
+    }
+
+    html += `<h3>ÇIKTI-3: Evidence (${data.evidence.length})</h3>`;
+    html += data.evidence.map(e => `
+      <div class="evidence-item">
+        <b>${e.sid}</b> score=${e.score.toFixed(2)} chunk_id=${e.chunk_id} source=${e.source_id} location=${e.location}<br>
+        <i>${e.quote}</i>
+      </div>`).join("");
+
+    resultEl.innerHTML = html;
+  } catch (err) {
+    resultEl.textContent = "Hata: " + err;
+  }
+});
+
+loadGraph();
+loadSelfCorrectionLog();
+loadPipelineStatus();
+loadUsage();
+setInterval(loadSelfCorrectionLog, 5000);
+setInterval(loadPipelineStatus, 5000);
+setInterval(loadUsage, 5000);
+</script>
+</body>
+</html>

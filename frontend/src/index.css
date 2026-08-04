@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #16130f;
+  --color-surface: #1e1a15;
+  --color-surface-2: #26211a;
+  --color-border: #322b21;
+  --color-border-hover: #4a3c2c;
+  --color-text: #f5efe4;
+  --color-text-muted: #a89a86;
+  --color-accent: #d97b2b;
+  --color-accent-strong: #f0913f;
+  --color-accent-weak: #2f2011;
+  --color-accent-contrast: #1c130b;
+  --color-risk-low: #5cb87a;
+  --color-risk-medium: #e8c547;
+  --color-risk-high: #e1544f;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  --shadow-strong: 0 2px 8px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --animate-bubble-morph: bubble-morph 420ms cubic-bezier(0.34, 1.4, 0.4, 1);
+  --animate-dot-pulse: dot-pulse 1.2s ease-in-out infinite;
+  --animate-modal-fade: modal-fade 200ms ease;
+  --animate-modal-scale-in: modal-scale-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes bubble-morph {
+  0% {
+    opacity: 0;
+    transform: translateY(26px) scale(0.7);
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dot-pulse {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-scale-in {
+  from {
+    transform: scale(0.94);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-hover);
+}
+
+/* Hover-revealed, trackless scrollbar for the app's primary scroll surfaces.
+   No Tailwind utility covers ::-webkit-scrollbar-thumb, so this stays as raw CSS. */
+.layout-main,
+.layout-sidebar-content,
+.drawer-panel-body,
+.reading-modal-body {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.layout-main:hover,
+.layout-sidebar-content:hover,
+.drawer-panel-body:hover,
+.reading-modal-body:hover {
+  scrollbar-color: var(--color-border-hover) transparent;
+}
+.layout-main::-webkit-scrollbar-thumb,
+.layout-sidebar-content::-webkit-scrollbar-thumb,
+.drawer-panel-body::-webkit-scrollbar-thumb,
+.reading-modal-body::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+.layout-main:hover::-webkit-scrollbar-thumb,
+.layout-sidebar-content:hover::-webkit-scrollbar-thumb,
+.drawer-panel-body:hover::-webkit-scrollbar-thumb,
+.reading-modal-body:hover::-webkit-scrollbar-thumb {
+  background: var(--color-border-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

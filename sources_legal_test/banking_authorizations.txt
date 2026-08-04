@@ -1,0 +1,117 @@
+Madde 2.1 - Temsil ve İlzamda İki Grup Kuralı.
+Şirketin sınırlı temsil ve ilzamı yönünden kural olarak iki ayrı gruptan (1. Grup ve 2. Grup) iki imza yetkilisi müştereken yetkilidir ve aynı grubun iki imza yetkilisi aynı anda Şirket'i temsil edemez.
+Madde 2.2 - Yetkilerin Kapsamı ve Devri.
+Aynı gruptaki A sınıfı imza yetkilisi B, C, D ve E sınıfı; B sınıfı C, D ve E sınıfı; C sınıfı D ve E sınıfı; D sınıfı ise E sınıfı imza yetkilerine de sahiptir.
+Madde 2.3 - Sözleşme ve Evrak İşlemleri.
+Sözleşme veya evrak imzalama yetkisi, ekleriyle birlikte değiştirme, fesih, sona erdirme, sunma, teslim alma, teslim etme ve iade dahil tüm işlemleri ve tahkim şartının imzalanmasını da kapsar. Parasal değişikliklerde ilgili eşikler dikkate alınır.
+Madde 2.4 - Parasal Eşiklerin Yorumlanması.
+Sözleşmenin süresi belirliyse toplam tutar, belirsizse en erken fesih zamanına kadar olan toplam tutar dikkate alınır.
+Madde 2.5 - Sözleşme Dışındaki Parasal Değerler.
+Sözleşme dışında Şirket aleyhine belirlenen ek parasal değerler, sözleşme tutarına eşit ya da azsa aynı yetkililer, fazla ise en yüksek tutar dikkate alınır.
+Madde 2.6 - Sözleşme Bedelinin Artırılması.
+Sözleşmede bedelin artışı öngörülmüşse, hesaplanabiliyorsa en yüksek tutar dikkate alınır.
+Madde 2.7 - Tutarların Netlik Durumu.
+Belirtilen tutarlar KDV ve vergiler hariç net tutarlardır.
+Madde 2.8 - Tutarların Bölünememesi.
+Tek işlemle bağlantılı tutar veya değerler, sınırları aşmamak için bölünemez.
+Madde 2.9 - Avro-TL Dönüşümü.
+Avrodan TL'ye çevrim için TCMB'nin işlem gününden bir önceki döviz satış kuru esas alınır.
+Madde 2.10 - Tutarların İşlem Tarihine Göre Yorumlanması.
+Tutarlar her işlem için işlem tarihindeki değeri ifade eder.
+Madde 2.11 - Toplam Yıllık Ücret Tanımı.
+"Toplam Yıllık Ücret"; uzun vadeli teşvik hariç, maaş, prim, yan haklar ve şirket aracını içerir, brüt olarak hesaplanır.
+Madde 3.1.1 - Üçüncü Kişilere Yapılan Para Transferleri.
+25.000 Avro’ya kadar üçüncü kişilere yapılan para transferlerinde 1. Grup D Sınıfı ile 2. Grup D Sınıfı yetkilileri müştereken yetkilidir.
+50.000 Avro’ya kadar üçüncü kişilere yapılan para transferlerinde 1. Grup C Sınıfı ile 2. Grup C Sınıfı yetkilileri müştereken yetkilidir.
+100.000 Avro’ya kadar üçüncü kişilere yapılan para transferlerinde 1. Grup B Sınıfı ile 2. Grup B Sınıfı yetkilileri müştereken yetkilidir.
+300.000 Avro’ya kadar üçüncü kişilere yapılan para transferlerinde 1. Grup A Sınıfı ile 2. Grup A Sınıfı yetkilileri müştereken yetkilidir.
+Madde 3.1.2 - Şirket İçi Banka Hesapları Arası Havale/EFT.
+Şirketin kendi banka hesapları arasındaki aynı para cinsinden havale/EFT/virman işlemlerinde 5.000.000 Avro’ya kadar 1. Grup D Sınıfı ile 2. Grup D Sınıfı yetkilileri müştereken yetkilidir.
+Madde 3.1.3 - Grup Şirketlerine ve Spor Kulübüne Ödemeler / Avans.
+500.000 Avro’ya kadar grup şirketlerine/Aras Kargo Spor Kulübü’ne ödemede 1. Grup C Sınıfı ile 2. Grup C Sınıfı yetkilileri müştereken yetkilidir.
+1.000.000 Avro’ya kadar grup şirketlerine/Aras Kargo Spor Kulübü’ne ödemede 1. Grup B Sınıfı ile 2. Grup B Sınıfı yetkilileri müştereken yetkilidir.
+1.500.000 Avro’ya kadar grup şirketlerine/Aras Kargo Spor Kulübü’ne ödemede 1. Grup A Sınıfı ile 2. Grup A Sınıfı yetkilileri müştereken yetkilidir.
+Madde 3.1.4 - Finansal Kuruluşlarda Mobil Kullanıcı Yetkilendirmeleri.
+Bankalar dahil tüm finansal kuruluşlarda izleyici/ yetkili tanımlama ve kullanıcı bilgi değişikliği için D Sınıfı iki farklı gruptan yetkili müştereken işlem yapabilir. İşlem ve tutar sınırı yoktur.
+Madde 3.1.5 - Şube Banka Hesap Açılış/Kapanış, Vadeli Mevduat, Şifre.
+Şirket şubelerinin banka hesap açılış/kapanışları, internet bankacılığı, vadeli hesap işlemleri için C Sınıfı iki farklı gruptan yetkili müştereken işlem yapar.
+Madde 3.1.6 - Vergi Ödemeleri.
+Her türlü vergi ödemesi için 2. Grup C Sınıfı imza yetkilisi münferit olarak (tek başına) işlem yapabilir.
+Madde 3.1.7 - Çek Tahsili.
+Çek tahsil cirosunda 1. Grup D Sınıfı ile 2. Grup D Sınıfı yetkilileri müştereken işlem yapar. Çek karşılığı şirket hesabına yatırılmak şarttır.
+Madde 3.1.8 - Kurumsal Kredi Kartı Başvurusu.
+Şirket kurumsal kredi kartı çıkarılması için başvuruda 1. Grup A Sınıfı ile 2. Grup A Sınıfı yetkilileri müştereken başvuru yapar.
+Madde 3.2.1 - Satış Sözleşmeleri.
+5.000.000 Avro’ya kadar ve sözleşmesel süresi beş yıla kadar olan satış sözleşmelerinin imzalanması, değiştirilmesi, feshedilmesi dahil işlemlerde 1. Grup A ve 2. Grup A Sınıfı yetkililer müştereken yetkilidir.
+1.325.000 Avro’ya kadar ve sözleşmesel süresi beş yıla kadar olan satış sözleşmelerinde 1. Grup C ve 2. Grup B Sınıfı yetkililer müştereken yetkilidir.
+105.000 Avro’ya kadar ve sözleşmesel süresi beş yıla kadar olan satış sözleşmelerinde 1. Grup D ve 2. Grup C Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.2.2 - Tedarik Sözleşmeleri.
+75.000 Avro’ya kadar olan tedarik sözleşmelerinde 1. Grup A ve 2. Grup A Sınıfı yetkililer müştereken yetkilidir.
+15.000 Avro’ya kadar olan tedarik sözleşmelerinde 1. Grup B ve 2. Grup B Sınıfı yetkililer müştereken yetkilidir.
+7.500 Avro’ya kadar olan tedarik sözleşmelerinde 1. Grup C ve 2. Grup C Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.2.3 - Kira Sözleşmeleri.
+Yıllık kira bedeli 75.000 Avro’ya kadar olan kira sözleşmelerinde 1. Grup A ve 2. Grup A Sınıfı yetkililer müştereken yetkilidir.
+Yıllık kira bedeli 15.000 Avro’ya kadar olan kira sözleşmelerinde 1. Grup B ve 2. Grup B Sınıfı yetkililer müştereken yetkilidir.
+Yıllık kira bedeli 7.500 Avro’ya kadar olan kira sözleşmelerinde 1. Grup C ve 2. Grup C Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.2.4 - Gizlilik Sözleşmeleri ve KVKK Protokolleri.
+Parasal değer içermeyen gizlilik ve KVKK protokollerinde 1. Grup C ve 2. Grup C Sınıfı yetkililer müştereken yetkilidir.
+Parasal değer içerenlerde, 3.7 maddesindeki imza yetkileri uygulanır.
+Madde 3.2.5 - Acentelik Sözleşmeleri.
+1. Grup C ile 2. Grup D Sınıfı yetkililer, içerikleri A sınıfı yetkililerce onaylanmış acentelik sözleşmelerinde müştereken yetkilidir.
+Madde 3.2.6 - Bağış, Sponsorluk ve Yönetim Danışmanlığı Sözleşmeleri.
+15.000 Avro’ya kadar olan sözleşmelerde 1. Grup A ve 2. Grup A Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.3.1 - İş Sözleşmeleri (Toplam Yıllık Ücret 150.000 Avro'ya kadar).
+150.000 Avro'ya kadar iş sözleşmeleri için insan kaynaklarından sorumlu 1. Grup A Sınıfı genel müdür yardımcısı ile 2. Grup A Sınıfı imza yetkililerinden herhangi biri müştereken yetkilidir.
+Madde 3.3.2 - İş Sözleşmeleri (Toplam Yıllık Ücret 75.000 Avro'ya kadar).
+75.000 Avro'ya kadar iş sözleşmeleri için insan kaynaklarından sorumlu 1. Grup C Sınıfı müdür ile 2. Grup A Sınıfı genel müdür yardımcısı müştereken yetkilidir.
+Madde 3.3.3 - Bölge ve Transfer Merkezi Müdürlükleri İş Sözleşmeleri.
+30.000 Avro'ya kadar iş sözleşmeleri için 1. Grup C Sınıfı bölge müdürü ile 2. Grup D Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.3.4 - Diğer İnsan Kaynakları ve İstihdam İşlemleri.
+İnsan kaynakları ile ilgili diğer işlemler, SGK işlemleri, bordro, bildirim, vize başvuruları vb. için 1. Grup D Sınıfı imza yetkililerinden herhangi biri münferiden yetkilidir.
+Madde 3.4.1 - Şirket’e Verilen Teminatlar.
+Şirket lehine rehin, ipotek ve diğer teminatların tesisi için 1. Grup D ve 2. Grup D Sınıfı yetkililer müştereken yetkilidir.
+Teminat mektuplarının bankaya iadesi/kaldırılması için 1. Grup B ve 2. Grup B Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.4.2 - Şirket Tarafından Verilen Teminatlar.
+150.000 Avro'ya kadar şirket tarafından verilen teminatlar için 1. Grup A ve 2. Grup A Sınıfı yetkililer müştereken yetkilidir.
+100.000 Avro'ya kadar şirket tarafından verilen teminatlar için 1. Grup B ve 2. Grup B Sınıfı yetkililer müştereken yetkilidir.
+50.000 Avro'ya kadar şirket tarafından verilen teminatlar için 1. Grup C ve 2. Grup C Sınıfı yetkililer müştereken yetkilidir.
+25.000 Avro'ya kadar şirket tarafından verilen teminatlar için 1. Grup D ve 2. Grup D Sınıfı yetkililer müştereken yetkilidir.
+Herhangi bir hukuki uyuşmazlıkta teminat verilmesi için 2. Grup A Sınıfı yetkililer münferiden yetkilidir.
+Madde 3.5.1 - Şirket Lehine Haklardan Feragat/Sulh/İbra (15.000 Avro'ya kadar).
+15.000 Avro'ya kadar şirket lehine haklardan feragat, sulh ve ibrada 1. Grup A ve 2. Grup A Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.5.2 - Şirket Lehine Haklardan Feragat/Sulh/İbra (7.500 Avro'ya kadar).
+7.500 Avro'ya kadar şirket lehine haklardan feragat, sulh ve ibrada 1. Grup B ve 2. Grup B Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.6.1 - Resmi Kurumlara Sunulacak Belgeler.
+Resmi kurumlara, para borcu doğurmayan belgelerde 1. Grup D ve 2. Grup D Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.6.2 - Bilişim, Rekabet, Cumhurbaşkanlığı Bildirimleri.
+BTK, Rekabet Kurumu ve Cumhurbaşkanlığı'na sunulacak belgeler için 1. Grup A ve 2. Grup A Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.6.3 - İhtarnameler.
+Para borcu doğurmayan ihtarnamelerde 1. Grup D ve 2. Grup D Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.6.4 - Vize Başvuruları.
+Vize başvurularında 1. Grup D Sınıfı yetkililer münferiden yetkilidir.
+Madde 3.6.5 - Faturaların İmzalanması.
+750 Avro'ya kadar olan faturaların imzalanmasında 1. Grup C Sınıfı yetkililer münferiden yetkilidir.
+Madde 3.6.6 - Tahsilat Makbuzlarının İmzalanması.
+130 Avro'ya kadar tahsilat makbuzlarında 1. Grup C Sınıfı yetkililer münferiden yetkilidir.
+Madde 3.6.7 - Taşıma Hukuku İşlemleri.
+Taşıma hukuku ile ilgili belgelerde 1. Grup C ve 2. Grup D Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.6.8 - İhbar ve Şikayetler.
+Savcılık, belediye ve yargı mercilerine şikayet için 1. Grup C ve 2. Grup D Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.6.9 - Abonelik ve Resmi Kurum İşlemleri.
+Abonelik, vergi, harç, işyeri açılış/kapanış vb. işlemlerde 1. Grup D Sınıfı yetkililer münferiden yetkilidir.
+Madde 3.6.10 - Gümrük İşlemleri.
+Gümrük işlemlerinde 1. Grup E Sınıfı yetkililer münferiden yetkilidir.
+Madde 3.6.11 - İhale İşlemleri.
+Kamu ihaleleri dahil teklif, belge sunumu vb. için 1. Grup C ve 2. Grup D Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.6.12 - Şube Müdürü Atama/Alma.
+Şube müdürü atama ve görevden alma işlemlerinde 1. Grup A ve 2. Grup A Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.6.13 - Noterlik Tespit İşlemleri.
+Noterde tespit işlemlerinde 1. veya 2. Grup C Sınıfı yetkililer münferiden yetkilidir.
+Madde 3.7.1 - Parasal Karşılığı Olan Diğer İş ve İşlemler (75.000 Avro'ya kadar).
+75.000 Avro'ya kadar parasal karşılığı olan işler için 1. Grup A ve 2. Grup A Sınıfı yetkililer müştereken yetkilidir.
+Madde 3.7.2 - Şirket Gayrimenkullerinin Satışı.
+Şirket’e ait gayrimenkullerin satışı işlemlerinde 1. Grup A Sınıfı ile 2. Grup A Sınıfı yetkilileri müştereken yetkilidir.
+Madde 4 - İmza Şekli.
+İşbu İç Yönerge ile verilen imza yetkileri, şirketi her konuda, her türlü taahhüt altında bırakıcı şekilde temsil ve ilzam edecek şekilde kullanılır. Bu yetkiler, şirketin çift imza prensibine uygun olarak, iki ayrı imza yetkilisi tarafından müştereken kullanılır.
+Madde 5 - Yürürlük.
+Bu İç Yönerge, Yönetim Kurulu’nun onay tarihinden itibaren yürürlüğe girer ve önceki tüm yetkilendirme düzenlemelerinin yerine geçer.

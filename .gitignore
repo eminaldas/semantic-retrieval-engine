@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+frontend/node_modules/
+frontend/dist/
+artifacts/
+.claude/
+.superpowers/
+
+# Dokumantasyon/planlama .md dosyalari commit disi - docs/prompts/ haric
+# (bunlar pipeline'in calisma aninda gercekten okudugu fonksiyonel sablonlar).
+*.md
+!docs/prompts/*.md
