@@ -1,0 +1,8 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Otonom Semantik Bilgi Agi backend"
+requires-python = ">=3.14"
+
+[tool.setuptools]
+packages = ["backend"]
