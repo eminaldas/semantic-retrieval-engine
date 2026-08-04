@@ -22,7 +22,7 @@ from sentence_transformers import CrossEncoder, SentenceTransformer
 import step5_query_engine as qe
 import step5c_risk_ranking as risk_ranking
 import step5b_entity_linker
-import step1_chunker
+from backend.pipeline import step1_chunker
 import manage_sources
 import step5d_conversation_memory as conv
 from backend.shared import gemini_usage

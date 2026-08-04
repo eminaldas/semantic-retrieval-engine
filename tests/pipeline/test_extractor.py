@@ -1,6 +1,6 @@
 import json
 
-import step2_extractor as extractor
+from backend.pipeline import step2_extractor as extractor
 
 
 def make_result(entity_confidences, relation_confidences):

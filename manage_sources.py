@@ -9,8 +9,8 @@ import json
 import subprocess
 import sys
 
-import step3_graph_writer
-import step4_vector_writer
+from backend.pipeline import step3_graph_writer
+from backend.pipeline import step4_vector_writer
 
 
 def load_jsonl(path):

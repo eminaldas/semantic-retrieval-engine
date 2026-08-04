@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from backend.shared import gemini_retry
 from backend.shared import gemini_usage
+from backend.shared.paths import PROJECT_ROOT
 
 # Ontology v0.1 (docs/01_architecture_v0.1.md #4) - bu listeler dışına cikilamaz.
 EntityType = Literal[
@@ -119,7 +120,7 @@ def save_extraction(chunk_id, result: ExtractionResult, output_handle):
 
 
 if __name__ == "__main__":
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = PROJECT_ROOT
     CHUNKS_FILE = os.path.join(BASE_DIR, "artifacts", "chunks.jsonl")
     OUTPUT_FILE = os.path.join(BASE_DIR, "artifacts", "extraction.jsonl")
     PROMPT_FILE = os.path.join(BASE_DIR, "docs", "prompts", "01_extraction_prompt.md")

@@ -1,5 +1,5 @@
 import eval_extraction as harness
-import step2_extractor as extractor
+from backend.pipeline import step2_extractor as extractor
 
 
 def make_extraction_result(entities, relations):

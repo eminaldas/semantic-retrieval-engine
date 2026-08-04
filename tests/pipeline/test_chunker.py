@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from pypdf import PdfWriter
 
-import step1_chunker as chunker
+from backend.pipeline import step1_chunker as chunker
 
 
 class TestCosineSimilarity:

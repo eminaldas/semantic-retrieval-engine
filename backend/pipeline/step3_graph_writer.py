@@ -9,6 +9,8 @@ from neo4j import GraphDatabase
 from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
 
+from backend.shared.paths import PROJECT_ROOT
+
 # Ontology v0.1 (docs/01_architecture_v0.1.md #4) - relation_type dogrudan Cypher
 # sorgusuna enterpole ediliyor (Neo4j iliski tipleri parametre olarak verilemez),
 # bu yuzden interpole etmeden once mutlaka bu whitelist'e karsi dogrulaniyor.
@@ -234,7 +236,7 @@ def write_extraction_record(tx, chunk, record, qdrant_client, embedding_model):
 
 
 if __name__ == "__main__":
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = PROJECT_ROOT
     CHUNKS_FILE = os.path.join(BASE_DIR, "artifacts", "chunks.jsonl")
     EXTRACTION_FILE = os.path.join(BASE_DIR, "artifacts", "extraction.jsonl")
     NEW_CHUNK_IDS_FILE = os.path.join(BASE_DIR, "artifacts", "new_chunk_ids.json")

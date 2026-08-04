@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
 
+from backend.shared.paths import PROJECT_ROOT
+
 COLLECTION_NAME = "chunks"
 EMBEDDING_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"  # step1_chunker.py ile ayni model olmali
 
@@ -51,7 +53,7 @@ def build_point(chunk, vector):
 
 
 if __name__ == "__main__":
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = PROJECT_ROOT
     CHUNKS_FILE = os.path.join(BASE_DIR, "artifacts", "chunks.jsonl")
 
     load_dotenv(os.path.join(BASE_DIR, ".env"))

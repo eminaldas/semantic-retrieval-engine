@@ -13,9 +13,10 @@ from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 from typing import List, Literal
 
-from step3_graph_writer import RELATION_TYPES
+from backend.pipeline.step3_graph_writer import RELATION_TYPES
 from backend.shared import gemini_retry
 from backend.shared import gemini_usage
+from backend.shared.paths import PROJECT_ROOT
 
 STAGE1_MODEL = "gemini-flash-lite-latest"
 DEBATE_MODEL = "gemini-flash-latest"
@@ -216,7 +217,7 @@ def supersede_old_edges(tx, source_id, old_edges):
 
 
 if __name__ == "__main__":
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = PROJECT_ROOT
     CHUNKS_FILE = os.path.join(BASE_DIR, "artifacts", "chunks.jsonl")
     EXTRACTION_FILE = os.path.join(BASE_DIR, "artifacts", "extraction.jsonl")
     NEW_CHUNK_IDS_FILE = os.path.join(BASE_DIR, "artifacts", "new_chunk_ids.json")

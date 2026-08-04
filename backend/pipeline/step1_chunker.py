@@ -11,6 +11,8 @@ from pypdf import PdfReader
 import docx
 from bs4 import BeautifulSoup
 
+from backend.shared.paths import PROJECT_ROOT
+
 nltk.download('punkt', quiet=True)
 nltk.download('punkt_tab', quiet=True)
 
@@ -274,7 +276,7 @@ def save_to_jsonl(chunk_records, output_file):
 
 
 if __name__ == "__main__":
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = PROJECT_ROOT
     SOURCES_DIR = os.path.join(BASE_DIR, "sources")
     OUTPUT_FILE = os.path.join(BASE_DIR, "artifacts", "chunks.jsonl")
 

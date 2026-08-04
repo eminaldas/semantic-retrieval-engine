@@ -7,7 +7,7 @@ kalite-olcum araci (eval_retrieval.py/dashboard.py gibi ayri duruyor).
 Retrieval fazinin aksine gercek Gemini API cagrisi yapar (GEMINI_API_KEY gerekir)."""
 
 import json
-import step3_graph_writer as gw
+from backend.pipeline import step3_graph_writer as gw
 
 
 def load_golden_set(path):
@@ -96,7 +96,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from google import genai
 
-import step2_extractor as extractor  # extract_chunk, load_prompt_template, DEFAULT_MODEL reuse
+from backend.pipeline import step2_extractor as extractor  # extract_chunk, load_prompt_template, DEFAULT_MODEL reuse
 import step5_query_engine as qe  # load_chunks_by_id reuse - chunk text lookup by chunk_id
 
 

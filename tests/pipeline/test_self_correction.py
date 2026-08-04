@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-import step6_self_correction as sc
+from backend.pipeline import step6_self_correction as sc
 
 
 def make_edge(type_, confidence, evidence_chunk_ids, target_id="B", target_name="B", status="ACTIVE"):
