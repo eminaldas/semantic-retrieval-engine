@@ -1,6 +1,6 @@
 """Konusma hafizasi: kalici gecmis + kayan pencere + ozet mekanizmasi.
-step5b_entity_linker.py/step5c_risk_ranking.py ile ayni konvansiyon - bagimsiz,
-hem CLI (step5_query_engine.py) hem dashboard.py tarafindan import edilir.
+entity_linker.py/risk_ranking.py ile ayni konvansiyon - bagimsiz,
+hem CLI (query_engine.py) hem dashboard.py tarafindan import edilir.
 docs/superpowers/specs/2026-08-02-conversation-memory-design.md."""
 
 import json

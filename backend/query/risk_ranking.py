@@ -2,14 +2,14 @@
 Neo4j GDS PageRank ile graf-geneli bir "en riskli nokta" siralamasi hesaplar,
 ilgili kaniti toplar. docs/superpowers/specs/2026-07-26-risk-ranking-design.md.
 
-step5_query_engine.py'yi import ETMEZ (dongusel import'u onlemek icin) -
+query_engine.py'yi import ETMEZ (dongusel import'u onlemek icin) -
 RELATION_WEIGHTS gibi paylasilan degerler parametre olarak alinir, capraz
 modul importu ile degil."""
 
 
 def format_risk_summary(ranked_nodes):
     """ranked_nodes -> MODE_B'nin path_summary'sinin yerini alacak metin.
-    step5_query_engine.py::build_context_pack'in path_summary_override'ina verilir."""
+    query_engine.py::build_context_pack'in path_summary_override'ina verilir."""
     if not ranked_nodes:
         return "(Grafta skorlanacak entity bulunamadi.)"
 
@@ -21,7 +21,7 @@ def format_risk_summary(ranked_nodes):
 
 def build_risk_evidence_pool(ranked_nodes, seed_chunk_ids, chunks_by_id):
     """Risk entity'lerinin kaniti + vektor seed kaniti birlesip tekillestirilir.
-    step5_query_engine.py::build_evidence_pool ile ayni birlestirme deseni,
+    query_engine.py::build_evidence_pool ile ayni birlestirme deseni,
     path relationship'leri yerine ranked_nodes'un evidence_chunk_ids'i kullanilir."""
     chunk_ids = set(seed_chunk_ids)
     for node in ranked_nodes:
@@ -47,9 +47,9 @@ def compute_risk_ranking(session, relation_weights, top_k=5):
 
     session.run("CALL gds.graph.drop('riskGraph', false)")
 
-    # rel_type, RELATION_WEIGHTS.keys() uzerinden geliyor (step5_query_engine.py'de
+    # rel_type, RELATION_WEIGHTS.keys() uzerinden geliyor (query_engine.py'de
     # hardcoded sabit) - kullanici girdisi degil, bu yuzden interpolasyon guvenli
-    # (step3_graph_writer.py'nin relation_type whitelist-kontrolu ile ayni mantik).
+    # (graph_writer.py'nin relation_type whitelist-kontrolu ile ayni mantik).
     for rel_type, weight in relation_weights.items():
         session.run(
             f"MATCH ()-[r:{rel_type}]->() "

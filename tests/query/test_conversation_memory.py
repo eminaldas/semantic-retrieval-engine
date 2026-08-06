@@ -1,4 +1,4 @@
-from backend.query import step5d_conversation_memory as conv
+from backend.query import conversation_memory as conv
 
 
 class TestLoadHistory:

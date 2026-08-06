@@ -7,10 +7,10 @@ from pydantic import BaseModel
 from backend.shared import gemini_retry
 from backend.shared import gemini_usage
 
-DEFAULT_MODEL = "gemini-flash-lite-latest"  # step2_extractor.py ile ayni varsayilan
+DEFAULT_MODEL = "gemini-flash-lite-latest"  # extractor.py ile ayni varsayilan
 
-ENTITY_COLLECTION_NAME = "entities"  # step3_graph_writer.py::ENTITY_COLLECTION_NAME ile ayni
-ENTITY_SIMILARITY_THRESHOLD = 0.85  # step3_graph_writer.py::ENTITY_SIMILARITY_THRESHOLD ile ayni baslangic degeri
+ENTITY_COLLECTION_NAME = "entities"  # graph_writer.py::ENTITY_COLLECTION_NAME ile ayni
+ENTITY_SIMILARITY_THRESHOLD = 0.85  # graph_writer.py::ENTITY_SIMILARITY_THRESHOLD ile ayni baslangic degeri
 
 
 def load_prompt_template(prompt_path):

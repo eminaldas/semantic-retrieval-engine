@@ -1,4 +1,4 @@
-from backend.query import step5_query_engine as qe
+from backend.query import query_engine as qe
 
 
 def rel(type_, confidence, evidence_chunk_ids):

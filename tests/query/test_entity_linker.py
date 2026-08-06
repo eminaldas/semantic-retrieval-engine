@@ -1,7 +1,7 @@
 # tests/test_entity_linker.py
 import pytest
 
-from backend.query import step5b_entity_linker as linker
+from backend.query import entity_linker as linker
 
 
 class TestLoadPromptTemplate:
