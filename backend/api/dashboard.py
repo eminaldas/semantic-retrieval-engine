@@ -598,4 +598,4 @@ if __name__ == "__main__":
         print("HATA: NEO4J_PASSWORD tanimli degil. .env dosyasina bir sifre yaz (bkz. .env.example)")
         sys.exit(1)
 
-    uvicorn.run("dashboard:app", host="127.0.0.1", port=8000, reload=False)
+    uvicorn.run("backend.api.dashboard:app", host="127.0.0.1", port=8000, reload=False)
