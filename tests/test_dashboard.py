@@ -3,7 +3,7 @@ import hmac
 import time
 
 import dashboard as dash
-import step5_query_engine as qe
+from backend.query import step5_query_engine as qe
 
 
 class TestBuildGraphResponse:

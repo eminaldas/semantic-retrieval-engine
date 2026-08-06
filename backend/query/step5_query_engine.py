@@ -13,11 +13,12 @@ from pydantic import BaseModel
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
-import step5b_entity_linker
-import step5c_risk_ranking as risk_ranking
-import step5d_conversation_memory as conv
+from backend.query import step5b_entity_linker
+from backend.query import step5c_risk_ranking as risk_ranking
+from backend.query import step5d_conversation_memory as conv
 from backend.shared import gemini_retry
 from backend.shared import gemini_usage
+from backend.shared.paths import PROJECT_ROOT
 
 EMBEDDING_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"  # step1/step4 ile ayni model
 CROSS_ENCODER_MODEL_NAME = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"  # cok dilli (Turkce dahil)
@@ -262,7 +263,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     mode_was_auto_detected = args.mode is None and not args.cause and not args.target
 
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = PROJECT_ROOT
     HISTORY_FILE = os.path.join(BASE_DIR, "artifacts", "conversation_history.jsonl")
     SUMMARY_FILE = os.path.join(BASE_DIR, "artifacts", "conversation_summary.json")
 

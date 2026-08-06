@@ -65,7 +65,7 @@ from neo4j import GraphDatabase
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
-import step5_query_engine as qe
+from backend.query import step5_query_engine as qe
 
 
 def evaluate_record(record, session, qdrant_client, embedding_model, cross_encoder, chunks_by_id, max_hops, seed_topk, top_n):

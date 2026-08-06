@@ -93,7 +93,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from google import genai
 
-import step5_query_engine as qe
+from backend.query import step5_query_engine as qe
 
 
 def evaluate_question(record, session, qdrant_client, embedding_model, cross_encoder, chunks_by_id,

@@ -97,7 +97,7 @@ from dotenv import load_dotenv
 from google import genai
 
 from backend.pipeline import step2_extractor as extractor  # extract_chunk, load_prompt_template, DEFAULT_MODEL reuse
-import step5_query_engine as qe  # load_chunks_by_id reuse - chunk text lookup by chunk_id
+from backend.query import step5_query_engine as qe  # load_chunks_by_id reuse - chunk text lookup by chunk_id
 
 
 def evaluate_chunk(record, client, model, prompt_template, chunks_by_id):
