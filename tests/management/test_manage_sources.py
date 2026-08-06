@@ -1,4 +1,4 @@
-import manage_sources
+from backend.management import manage_sources
 
 
 class TestGroupChunksBySource:

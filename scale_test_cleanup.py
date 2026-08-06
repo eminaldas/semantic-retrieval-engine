@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from neo4j import GraphDatabase
 from qdrant_client import QdrantClient
 
-import manage_sources
+from backend.management import manage_sources
 
 ORIGINAL_SOURCE_IDS = {"mimari_v1.txt", "wikipedia_deadlock.txt", "wikipedia_postgresql.txt"}
 

@@ -23,7 +23,7 @@ from backend.query import step5_query_engine as qe
 from backend.query import step5c_risk_ranking as risk_ranking
 from backend.query import step5b_entity_linker
 from backend.pipeline import step1_chunker
-import manage_sources
+from backend.management import manage_sources
 from backend.query import step5d_conversation_memory as conv
 from backend.shared import gemini_usage
 

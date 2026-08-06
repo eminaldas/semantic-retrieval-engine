@@ -181,16 +181,17 @@ def cmd_update(file_path, chunks_file, extraction_file, neo4j_driver, qdrant_cli
     cmd_remove(source_id, chunks_file, extraction_file, neo4j_driver, qdrant_client)
 
     steps = [
-        [sys.executable, os.path.join(base_dir, "step1_chunker.py"), file_path],
-        [sys.executable, os.path.join(base_dir, "step2_extractor.py")],
-        [sys.executable, os.path.join(base_dir, "step3_graph_writer.py")],
-        [sys.executable, os.path.join(base_dir, "step4_vector_writer.py")],
+        [sys.executable, "-m", "backend.pipeline.step1_chunker", file_path],
+        [sys.executable, "-m", "backend.pipeline.step2_extractor"],
+        [sys.executable, "-m", "backend.pipeline.step3_graph_writer"],
+        [sys.executable, "-m", "backend.pipeline.step4_vector_writer"],
     ]
     for step_cmd in steps:
-        print(f"\n=== {os.path.basename(step_cmd[1])} calistiriliyor ===", flush=True)
+        step_module = step_cmd[2]
+        print(f"\n=== {step_module} calistiriliyor ===", flush=True)
         result = subprocess.run(step_cmd, cwd=base_dir)
         if result.returncode != 0:
-            print(f"\nHATA: {step_cmd[1]} basarisiz oldu (exit code {result.returncode}). Update durduruldu.", flush=True)
+            print(f"\nHATA: {step_module} basarisiz oldu (exit code {result.returncode}). Update durduruldu.", flush=True)
             sys.exit(result.returncode)
 
     print(f"\nBASARILI! '{source_id}' guncellendi (silindi + yeniden ingest edildi).", flush=True)
@@ -200,7 +201,9 @@ if __name__ == "__main__":
     import argparse
     import os
 
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    from backend.shared.paths import PROJECT_ROOT
+
+    BASE_DIR = PROJECT_ROOT
     CHUNKS_FILE = os.path.join(BASE_DIR, "artifacts", "chunks.jsonl")
     EXTRACTION_FILE = os.path.join(BASE_DIR, "artifacts", "extraction.jsonl")
 
