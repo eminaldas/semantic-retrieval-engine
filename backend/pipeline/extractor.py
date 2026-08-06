@@ -133,7 +133,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if not os.path.exists(CHUNKS_FILE):
-        print(f"HATA: {CHUNKS_FILE} bulunamadi. Once step1_chunker.py calistirilmali.")
+        print(f"HATA: {CHUNKS_FILE} bulunamadi. Once chunker.py calistirilmali.")
         sys.exit(1)
 
     model_name = os.environ.get("GEMINI_EXTRACTOR_MODEL", DEFAULT_MODEL)

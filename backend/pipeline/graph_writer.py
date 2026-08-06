@@ -23,7 +23,7 @@ ENTITY_COLLECTION_NAME = "entities"
 ENTITY_SIMILARITY_THRESHOLD = 0.85  # docs/superpowers/specs/2026-07-22-entity-resolution-design.md #1
 
 # entity_id -> Qdrant point id turetmek icin sabit namespace (uuid5, deterministik).
-# step4_vector_writer.py'nin CHUNK_ID_NAMESPACE'iyle ayni desen, farkli bir sabit -
+# vector_writer.py'nin CHUNK_ID_NAMESPACE'iyle ayni desen, farkli bir sabit -
 # chunk point id'leriyle hic cakismamasi icin kasten farkli UUID.
 ENTITY_ID_NAMESPACE = uuid.UUID("a3f8c2e1-7b4d-4f9a-9c1e-6d2b8f0a5c3d")
 
@@ -136,7 +136,7 @@ def ensure_constraints(session):
 
 
 def chunk_exists(tx, chunk_id):
-    """step6_self_correction.py'nin dogru bir 'eski/yeni' ayrimi yapabilmesi icin:
+    """self_correction.py'nin dogru bir 'eski/yeni' ayrimi yapabilmesi icin:
     bu chunk_id, upsert_chunk cagrilmadan ONCE grafta zaten var miydi?"""
     result = tx.run("MATCH (c:Chunk {chunk_id: $chunk_id}) RETURN c", chunk_id=chunk_id)
     return result.single() is not None
@@ -255,7 +255,7 @@ if __name__ == "__main__":
 
     for required_file in (CHUNKS_FILE, EXTRACTION_FILE):
         if not os.path.exists(required_file):
-            print(f"HATA: {required_file} bulunamadi. Once step1_chunker.py ve step2_extractor.py calistirilmali.")
+            print(f"HATA: {required_file} bulunamadi. Once chunker.py ve extractor.py calistirilmali.")
             sys.exit(1)
 
     print("Neo4j'ye ve Qdrant'a baglaniliyor, embedding modeli yukleniyor...")

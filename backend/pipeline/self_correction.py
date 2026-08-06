@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 from typing import List, Literal
 
-from backend.pipeline.step3_graph_writer import RELATION_TYPES
+from backend.pipeline.graph_writer import RELATION_TYPES
 from backend.shared import gemini_retry
 from backend.shared import gemini_usage
 from backend.shared.paths import PROJECT_ROOT
@@ -240,7 +240,7 @@ if __name__ == "__main__":
 
     for required_file in (CHUNKS_FILE, EXTRACTION_FILE, NEW_CHUNK_IDS_FILE):
         if not os.path.exists(required_file):
-            print(f"HATA: {required_file} bulunamadi. Once step1-3 calistirilmali (guncel step3_graph_writer.py, new_chunk_ids.json'i o yazar).")
+            print(f"HATA: {required_file} bulunamadi. Once step1-3 calistirilmali (guncel graph_writer.py, new_chunk_ids.json'i o yazar).")
             sys.exit(1)
 
     chunks_by_id = {c["chunk_id"]: c for c in load_jsonl(CHUNKS_FILE)}

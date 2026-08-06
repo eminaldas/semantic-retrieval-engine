@@ -1,4 +1,4 @@
-from backend.pipeline import step4_vector_writer as vw
+from backend.pipeline import vector_writer as vw
 
 
 class TestChunkPointId:

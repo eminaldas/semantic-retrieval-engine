@@ -1,6 +1,6 @@
 import pytest
 
-from backend.pipeline import step3_graph_writer as gw
+from backend.pipeline import graph_writer as gw
 
 
 class TestNormalizeEntityId:
