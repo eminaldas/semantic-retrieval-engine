@@ -13,7 +13,8 @@ from neo4j import GraphDatabase
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 
-import step3_graph_writer as gw
+from backend.pipeline import step3_graph_writer as gw
+from backend.shared.paths import PROJECT_ROOT
 
 SCALE_TEST_TYPE = "SCALE_TEST_ENTITY"
 MEASURE_POINTS = [50, 100, 200, 400, 800]
@@ -29,7 +30,7 @@ def resolve_and_write(tx, name, qdrant_client, embedding_model):
 
 
 if __name__ == "__main__":
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = PROJECT_ROOT
     RESULTS_FILE = os.path.join(BASE_DIR, "artifacts", "scale_test_results.json")
 
     load_dotenv(os.path.join(BASE_DIR, ".env"))

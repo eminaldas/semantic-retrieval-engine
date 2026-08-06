@@ -8,9 +8,10 @@ import re
 
 from sentence_transformers import SentenceTransformer
 
-import step1_chunker as chunker
+from backend.pipeline import step1_chunker as chunker
+from backend.shared.paths import PROJECT_ROOT
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = PROJECT_ROOT
 
 print("=== 1) Legal test dokumaninda yalitilmis rakam+nokta parcasi kalmamis mi ===")
 legal_path = os.path.join(BASE_DIR, "sources_legal_test", "banking_authorizations.txt")

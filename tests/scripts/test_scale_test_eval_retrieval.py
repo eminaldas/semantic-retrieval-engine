@@ -1,4 +1,4 @@
-import scale_test_eval_retrieval as ser
+from backend.scripts import scale_test_eval_retrieval as ser
 
 
 class TestComputeHit:

@@ -9,6 +9,8 @@ import time
 
 import requests
 
+from backend.shared.paths import PROJECT_ROOT
+
 API_URL = "https://tr.wikipedia.org/w/api.php"
 USER_AGENT = "OtonomSemantikBilgiAgi-ScaleTest/1.0 (egitim/arastirma amacli, tek seferlik olcum)"
 CATEGORIES = [
@@ -88,7 +90,7 @@ def slugify_title(title):
 
 
 if __name__ == "__main__":
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = PROJECT_ROOT
     OUTPUT_DIR = os.path.join(BASE_DIR, "sources_scale_test")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 

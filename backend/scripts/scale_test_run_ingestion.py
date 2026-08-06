@@ -9,7 +9,9 @@ import subprocess
 import sys
 import time
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+from backend.shared.paths import PROJECT_ROOT
+
+BASE_DIR = PROJECT_ROOT
 SCALE_TEST_SOURCES_DIR = os.path.join(BASE_DIR, "sources_scale_test")
 RESULTS_FILE = os.path.join(BASE_DIR, "artifacts", "scale_test_results.json")
 
@@ -25,21 +27,21 @@ if __name__ == "__main__":
 
     start = time.time()
     for i, file_path in enumerate(test_files, start=1):
-        result = subprocess.run([sys.executable, os.path.join(BASE_DIR, "step1_chunker.py"), file_path], cwd=BASE_DIR)
+        result = subprocess.run([sys.executable, "-m", "backend.pipeline.step1_chunker", file_path], cwd=BASE_DIR)
         if result.returncode != 0:
             print(f"UYARI: {file_path} step1'de basarisiz oldu, atlaniyor.", flush=True)
         print(f"  [{i}/{len(test_files)}] step1 tamamlandi: {os.path.basename(file_path)}", flush=True)
     timings["step1_chunker_total_seconds"] = time.time() - start
 
-    for step_script in ["step2_extractor.py", "step3_graph_writer.py", "step4_vector_writer.py"]:
-        print(f"\n=== {step_script} calistiriliyor ===", flush=True)
+    for step_module in ["backend.pipeline.step2_extractor", "backend.pipeline.step3_graph_writer", "backend.pipeline.step4_vector_writer"]:
+        print(f"\n=== {step_module} calistiriliyor ===", flush=True)
         start = time.time()
-        result = subprocess.run([sys.executable, os.path.join(BASE_DIR, step_script)], cwd=BASE_DIR)
+        result = subprocess.run([sys.executable, "-m", step_module], cwd=BASE_DIR)
         elapsed = time.time() - start
-        timings[f"{step_script.replace('.py', '')}_total_seconds"] = elapsed
-        print(f"{step_script}: {elapsed:.1f}s (exit code {result.returncode})", flush=True)
+        timings[f"{step_module.replace('.py', '')}_total_seconds"] = elapsed
+        print(f"{step_module}: {elapsed:.1f}s (exit code {result.returncode})", flush=True)
         if result.returncode != 0:
-            print(f"UYARI: {step_script} basarisiz oldu (exit code {result.returncode}). Devam ediliyor.", flush=True)
+            print(f"UYARI: {step_module} basarisiz oldu (exit code {result.returncode}). Devam ediliyor.", flush=True)
 
     os.makedirs(os.path.dirname(RESULTS_FILE), exist_ok=True)
     existing = {}

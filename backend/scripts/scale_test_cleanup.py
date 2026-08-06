@@ -9,11 +9,12 @@ from neo4j import GraphDatabase
 from qdrant_client import QdrantClient
 
 from backend.management import manage_sources
+from backend.shared.paths import PROJECT_ROOT
 
 ORIGINAL_SOURCE_IDS = {"mimari_v1.txt", "wikipedia_deadlock.txt", "wikipedia_postgresql.txt"}
 
 if __name__ == "__main__":
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = PROJECT_ROOT
     CHUNKS_FILE = os.path.join(BASE_DIR, "artifacts", "chunks.jsonl")
     EXTRACTION_FILE = os.path.join(BASE_DIR, "artifacts", "extraction.jsonl")
 

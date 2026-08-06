@@ -35,10 +35,11 @@ from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 
 from backend.query import step5_query_engine as qe
+from backend.shared.paths import PROJECT_ROOT
 
 
 if __name__ == "__main__":
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = PROJECT_ROOT
     GOLDEN_SET_FILE = os.path.join(BASE_DIR, "eval", "golden_scale_retrieval.jsonl")
     CHUNKS_FILE = os.path.join(BASE_DIR, "artifacts", "chunks.jsonl")
     RESULTS_FILE = os.path.join(BASE_DIR, "artifacts", "scale_test_results.json")
