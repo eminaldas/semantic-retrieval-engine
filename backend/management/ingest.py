@@ -6,8 +6,8 @@ talep-uzerine calisan bir orkestrasyon araci. Her adimi subprocess ile
 calistirir - mevcut script'lerin __main__'larini yeniden yazmaz/import etmez.
 
 Adimlar modul-yolu ile (-m) cagriliyor, dosya-yolu ile degil - boylece
-backend/ paketinin ic import'lari (orn. step6'nin step3'ten RELATION_TYPES
-almasi) subprocess icinde de dogru calisiyor."""
+backend/ paketinin ic import'lari (orn. self_correction'in graph_writer'dan
+RELATION_TYPES almasi) subprocess icinde de dogru calisiyor."""
 
 import subprocess
 import sys
@@ -15,11 +15,11 @@ import sys
 from backend.shared.paths import PROJECT_ROOT
 
 STEPS = [
-    "backend.pipeline.step1_chunker",
-    "backend.pipeline.step2_extractor",
-    "backend.pipeline.step3_graph_writer",
-    "backend.pipeline.step4_vector_writer",
-    "backend.pipeline.step6_self_correction",
+    "backend.pipeline.chunker",
+    "backend.pipeline.extractor",
+    "backend.pipeline.graph_writer",
+    "backend.pipeline.vector_writer",
+    "backend.pipeline.self_correction",
 ]
 
 if __name__ == "__main__":

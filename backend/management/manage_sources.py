@@ -9,8 +9,8 @@ import json
 import subprocess
 import sys
 
-from backend.pipeline import step3_graph_writer
-from backend.pipeline import step4_vector_writer
+from backend.pipeline import graph_writer
+from backend.pipeline import vector_writer
 
 
 def load_jsonl(path):
@@ -144,11 +144,11 @@ def remove_source(source_id, chunks_file, extraction_file, neo4j_driver, qdrant_
     with neo4j_driver.session() as session:
         removed_entity_ids = remove_source_from_graph(session, removed_chunk_ids)
 
-    chunk_point_ids = [step4_vector_writer.chunk_point_id(cid) for cid in removed_chunk_ids]
+    chunk_point_ids = [vector_writer.chunk_point_id(cid) for cid in removed_chunk_ids]
     qdrant_client.delete(collection_name="chunks", points_selector=chunk_point_ids)
 
     if removed_entity_ids:
-        entity_point_ids = [step3_graph_writer.entity_point_id(eid) for eid in removed_entity_ids]
+        entity_point_ids = [graph_writer.entity_point_id(eid) for eid in removed_entity_ids]
         qdrant_client.delete(collection_name="entities", points_selector=entity_point_ids)
 
     remaining_chunks = [c for c in chunks if c["source_id"] != source_id]
@@ -181,10 +181,10 @@ def cmd_update(file_path, chunks_file, extraction_file, neo4j_driver, qdrant_cli
     cmd_remove(source_id, chunks_file, extraction_file, neo4j_driver, qdrant_client)
 
     steps = [
-        [sys.executable, "-m", "backend.pipeline.step1_chunker", file_path],
-        [sys.executable, "-m", "backend.pipeline.step2_extractor"],
-        [sys.executable, "-m", "backend.pipeline.step3_graph_writer"],
-        [sys.executable, "-m", "backend.pipeline.step4_vector_writer"],
+        [sys.executable, "-m", "backend.pipeline.chunker", file_path],
+        [sys.executable, "-m", "backend.pipeline.extractor"],
+        [sys.executable, "-m", "backend.pipeline.graph_writer"],
+        [sys.executable, "-m", "backend.pipeline.vector_writer"],
     ]
     for step_cmd in steps:
         step_module = step_cmd[2]

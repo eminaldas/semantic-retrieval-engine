@@ -19,12 +19,12 @@ from pydantic import BaseModel
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
-from backend.query import step5_query_engine as qe
-from backend.query import step5c_risk_ranking as risk_ranking
-from backend.query import step5b_entity_linker
-from backend.pipeline import step1_chunker
+from backend.query import query_engine as qe
+from backend.query import risk_ranking
+from backend.query import entity_linker
+from backend.pipeline import chunker
 from backend.management import manage_sources
-from backend.query import step5d_conversation_memory as conv
+from backend.query import conversation_memory as conv
 from backend.shared import gemini_usage
 from backend.shared.paths import PROJECT_ROOT
 
@@ -45,11 +45,11 @@ FRONTEND_DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
 FRONTEND_INDEX_FILE = os.path.join(FRONTEND_DIST_DIR, "index.html")
 SOURCES_DIR = os.path.join(BASE_DIR, "sources")
 UPLOAD_STEPS = [
-    ("backend.pipeline.step1_chunker", "Chunking"),
-    ("backend.pipeline.step2_extractor", "Çıkarım yapılıyor"),
-    ("backend.pipeline.step3_graph_writer", "Graf yazılıyor"),
-    ("backend.pipeline.step4_vector_writer", "Vektör yazılıyor"),
-    ("backend.pipeline.step6_self_correction", "Kendini-düzeltme"),
+    ("backend.pipeline.chunker", "Chunking"),
+    ("backend.pipeline.extractor", "Çıkarım yapılıyor"),
+    ("backend.pipeline.graph_writer", "Graf yazılıyor"),
+    ("backend.pipeline.vector_writer", "Vektör yazılıyor"),
+    ("backend.pipeline.self_correction", "Kendini-düzeltme"),
 ]
 
 
@@ -156,7 +156,7 @@ def verify_session_token(token, secret, max_age_seconds=7 * 24 * 3600):
 
 
 def build_entity_link_error_detail(failures):
-    """step5b_entity_linker.EntityLinkError.failures -> HTTPException detail sozlugu.
+    """entity_linker.EntityLinkError.failures -> HTTPException detail sozlugu.
     Kullaniciya CLI'nin ham aday listesi yerine anlasilir, kisa bir mesaj gosterilir."""
     return {
         "message": "Sorunuzdaki varlıkları tanıyamadım, lütfen daha açık ifade eder misiniz?",
@@ -246,7 +246,7 @@ def run_upload_job(job_id, file_path, source_id, chunks_file, extraction_file, n
             "error_message": None, "result": None,
         }
         args = [sys.executable, "-m", step_module]
-        if step_module == "backend.pipeline.step1_chunker":
+        if step_module == "backend.pipeline.chunker":
             args.append(file_path)
         result = subprocess.run(args, cwd=BASE_DIR)
         if result.returncode != 0:
@@ -291,8 +291,8 @@ async def lifespan(app: FastAPI):
     app.state.genai_client = genai.Client(api_key=api_key) if api_key else None
     app.state.answerer_model = os.environ.get("GEMINI_ANSWERER_MODEL", qe.DEFAULT_ANSWERER_MODEL)
     app.state.answerer_prompt_template = qe.load_prompt_template(ANSWERER_PROMPT_FILE)
-    app.state.linker_model = os.environ.get("GEMINI_EXTRACTOR_MODEL", step5b_entity_linker.DEFAULT_MODEL)
-    app.state.linker_prompt_template = step5b_entity_linker.load_prompt_template(LINKER_PROMPT_FILE)
+    app.state.linker_model = os.environ.get("GEMINI_EXTRACTOR_MODEL", entity_linker.DEFAULT_MODEL)
+    app.state.linker_prompt_template = entity_linker.load_prompt_template(LINKER_PROMPT_FILE)
     app.state.mode_detection_prompt_template = qe.load_prompt_template(MODE_DETECTION_PROMPT_FILE)
     app.state.rewrite_prompt_template = conv.load_prompt_template(REWRITE_PROMPT_FILE)
     app.state.summary_prompt_template = conv.load_prompt_template(SUMMARY_PROMPT_FILE)
@@ -440,7 +440,7 @@ def get_source_content(source_id: str):
 async def upload_source(file: UploadFile, background_tasks: BackgroundTasks):
     source_id = file.filename
     ext = os.path.splitext(source_id)[1].lower()
-    if ext not in step1_chunker.SUPPORTED_EXTENSIONS:
+    if ext not in chunker.SUPPORTED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Desteklenmeyen dosya turu: {ext}")
     if any(job["status"] == "running" for job in app.state.upload_jobs.values()):
         raise HTTPException(status_code=409, detail="Baska bir yukleme devam ediyor.")
@@ -523,12 +523,12 @@ def post_query(req: QueryRequest):
             if app.state.genai_client is None:
                 raise HTTPException(status_code=422, detail={"message": "Bu mod icin GEMINI_API_KEY gerekli."})
             try:
-                link_result = step5b_entity_linker.link_entities(
+                link_result = entity_linker.link_entities(
                     effective_question, app.state.qdrant_client, app.state.embedding_model,
                     app.state.genai_client, app.state.linker_model, app.state.linker_prompt_template,
                 )
                 cause_id, target_id = link_result.cause_entity_id, link_result.target_entity_id
-            except step5b_entity_linker.EntityLinkError as exc:
+            except entity_linker.EntityLinkError as exc:
                 if not mode_was_auto_detected:
                     raise HTTPException(status_code=422, detail=build_entity_link_error_detail(exc.failures))
                 mode = "general"
