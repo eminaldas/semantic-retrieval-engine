@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import time
 
-import dashboard as dash
+from backend.api import dashboard as dash
 from backend.query import step5_query_engine as qe
 
 

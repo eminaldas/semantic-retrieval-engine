@@ -26,8 +26,10 @@ from backend.pipeline import step1_chunker
 from backend.management import manage_sources
 from backend.query import step5d_conversation_memory as conv
 from backend.shared import gemini_usage
+from backend.shared.paths import PROJECT_ROOT
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = PROJECT_ROOT
+MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHUNKS_FILE = os.path.join(BASE_DIR, "artifacts", "chunks.jsonl")
 EXTRACTION_FILE = os.path.join(BASE_DIR, "artifacts", "extraction.jsonl")
 SELF_CORRECTION_LOG_FILE = os.path.join(BASE_DIR, "artifacts", "self_correction_log.jsonl")
@@ -38,16 +40,16 @@ HISTORY_FILE = os.path.join(BASE_DIR, "artifacts", "conversation_history.jsonl")
 SUMMARY_FILE = os.path.join(BASE_DIR, "artifacts", "conversation_summary.json")
 REWRITE_PROMPT_FILE = os.path.join(BASE_DIR, "docs", "prompts", "09_conversation_rewrite_prompt.md")
 SUMMARY_PROMPT_FILE = os.path.join(BASE_DIR, "docs", "prompts", "10_conversation_summary_prompt.md")
-DASHBOARD_HTML_FILE = os.path.join(BASE_DIR, "dashboard.html")
+DASHBOARD_HTML_FILE = os.path.join(MODULE_DIR, "dashboard.html")
 FRONTEND_DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
 FRONTEND_INDEX_FILE = os.path.join(FRONTEND_DIST_DIR, "index.html")
 SOURCES_DIR = os.path.join(BASE_DIR, "sources")
 UPLOAD_STEPS = [
-    ("step1_chunker.py", "Chunking"),
-    ("step2_extractor.py", "Çıkarım yapılıyor"),
-    ("step3_graph_writer.py", "Graf yazılıyor"),
-    ("step4_vector_writer.py", "Vektör yazılıyor"),
-    ("step6_self_correction.py", "Kendini-düzeltme"),
+    ("backend.pipeline.step1_chunker", "Chunking"),
+    ("backend.pipeline.step2_extractor", "Çıkarım yapılıyor"),
+    ("backend.pipeline.step3_graph_writer", "Graf yazılıyor"),
+    ("backend.pipeline.step4_vector_writer", "Vektör yazılıyor"),
+    ("backend.pipeline.step6_self_correction", "Kendini-düzeltme"),
 ]
 
 
@@ -237,21 +239,21 @@ def run_upload_job(job_id, file_path, source_id, chunks_file, extraction_file, n
         }
         manage_sources.remove_source(source_id, chunks_file, extraction_file, neo4j_driver, qdrant_client)
 
-    for i, (step_script, step_label) in enumerate(UPLOAD_STEPS, start=1):
+    for i, (step_module, step_label) in enumerate(UPLOAD_STEPS, start=1):
         app.state.upload_jobs[job_id] = {
             "status": "running", "step": i, "total_steps": total,
             "step_name": step_label, "source_id": source_id,
             "error_message": None, "result": None,
         }
-        args = [sys.executable, os.path.join(BASE_DIR, step_script)]
-        if step_script == "step1_chunker.py":
+        args = [sys.executable, "-m", step_module]
+        if step_module == "backend.pipeline.step1_chunker":
             args.append(file_path)
         result = subprocess.run(args, cwd=BASE_DIR)
         if result.returncode != 0:
             app.state.upload_jobs[job_id] = {
                 "status": "error", "step": i, "total_steps": total,
                 "step_name": step_label, "source_id": source_id,
-                "error_message": f"{step_script} basarisiz oldu (exit code {result.returncode})",
+                "error_message": f"{step_module} basarisiz oldu (exit code {result.returncode})",
                 "result": None,
             }
             return
