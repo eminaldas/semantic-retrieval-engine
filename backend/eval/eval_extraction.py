@@ -98,6 +98,7 @@ from google import genai
 
 from backend.pipeline import step2_extractor as extractor  # extract_chunk, load_prompt_template, DEFAULT_MODEL reuse
 from backend.query import step5_query_engine as qe  # load_chunks_by_id reuse - chunk text lookup by chunk_id
+from backend.shared.paths import PROJECT_ROOT
 
 
 def evaluate_chunk(record, client, model, prompt_template, chunks_by_id):
@@ -120,7 +121,7 @@ if __name__ == "__main__":
     parser.add_argument("--golden-set", default=None, help="golden set jsonl yolu (varsayilan: eval/golden_extraction.jsonl)")
     args = parser.parse_args()
 
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = PROJECT_ROOT
     GOLDEN_SET_FILE = args.golden_set or os.path.join(BASE_DIR, "eval", "golden_extraction.jsonl")
     CHUNKS_FILE = os.path.join(BASE_DIR, "artifacts", "chunks.jsonl")
     PROMPT_FILE = os.path.join(BASE_DIR, "docs", "prompts", "01_extraction_prompt.md")

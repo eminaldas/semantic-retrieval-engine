@@ -1,4 +1,4 @@
-import eval_retrieval as harness
+from backend.eval import eval_retrieval as harness
 
 
 class TestLoadGoldenSet:

@@ -94,6 +94,7 @@ from dotenv import load_dotenv
 from google import genai
 
 from backend.query import step5_query_engine as qe
+from backend.shared.paths import PROJECT_ROOT
 
 
 def evaluate_question(record, session, qdrant_client, embedding_model, cross_encoder, chunks_by_id,
@@ -138,7 +139,7 @@ if __name__ == "__main__":
     parser.add_argument("--top-n", type=int, default=5)
     args = parser.parse_args()
 
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = PROJECT_ROOT
     GOLDEN_SET_FILE = args.golden_set or os.path.join(BASE_DIR, "eval", "golden_retrieval.jsonl")
     CHUNKS_FILE = os.path.join(BASE_DIR, "artifacts", "chunks.jsonl")
     ANSWERER_PROMPT_FILE = os.path.join(BASE_DIR, "docs", "prompts", "02_answerer_prompt.md")

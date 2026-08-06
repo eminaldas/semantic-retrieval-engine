@@ -1,4 +1,4 @@
-import eval_extraction as harness
+from backend.eval import eval_extraction as harness
 from backend.pipeline import step2_extractor as extractor
 
 

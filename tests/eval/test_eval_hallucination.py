@@ -1,4 +1,4 @@
-import eval_hallucination as harness
+from backend.eval import eval_hallucination as harness
 
 
 class TestLoadGoldenSet:
