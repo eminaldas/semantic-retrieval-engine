@@ -39,6 +39,11 @@ RELATION_WEIGHTS = {
     "DEPENDS_ON": 1, "USES": 1, "MITIGATES": 1, "PREVENTS": 1,
 }
 
+# docs/superpowers/specs/2026-08-07-retrieval-confidence-gate-design.md #4: eval/golden_retrieval.jsonl
+# (5 cevaplanmali) + eval/golden_refusal.jsonl (8 reddetmeli) uzerinde canli olculdu (bkz. bu
+# task'in implementasyon raporundaki Step 3 ciktisi).
+GENERAL_MODE_RELEVANCE_THRESHOLD = -1.5  # cevaplanmali min -0.829, reddetmeli max -2.130 arasindaki orta nokta
+
 
 def resolve_mode(mode_arg, cause, target):
     """--mode acikca verilmisse oldugu gibi doner. Verilmemisse (None): --cause/--target'tan
@@ -171,7 +176,7 @@ def rerank_evidence(cross_encoder, question, evidence_pool, top_n=5):
     return ranked[:top_n]
 
 
-def has_sufficient_evidence(ranked_evidence, threshold):
+def has_sufficient_evidence(ranked_evidence, threshold=GENERAL_MODE_RELEVANCE_THRESHOLD):
     """ranked_evidence: rerank_evidence() ciktisi [(chunk, score), ...], skora gore azalan
     sirali. Bos ya da en iyi (top-1) skor esigin altindaysa False doner - MODE_GENERAL'in
     Answerer'i hic cagirmadan yapisal bir 'kanit yetersiz' karari verebilmesi icin

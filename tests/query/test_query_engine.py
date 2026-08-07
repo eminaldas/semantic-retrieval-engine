@@ -219,3 +219,9 @@ class TestHasSufficientEvidence:
     def test_only_top_score_matters_not_lower_ranked_scores(self):
         evidence = [({"chunk_id": "a"}, 10.0), ({"chunk_id": "b"}, -100.0)]
         assert qe.has_sufficient_evidence(evidence, threshold=9.0) is True
+
+    def test_default_threshold_is_module_constant(self):
+        just_above = [({"chunk_id": "a"}, qe.GENERAL_MODE_RELEVANCE_THRESHOLD + 0.01)]
+        just_below = [({"chunk_id": "a"}, qe.GENERAL_MODE_RELEVANCE_THRESHOLD - 0.01)]
+        assert qe.has_sufficient_evidence(just_above) is True
+        assert qe.has_sufficient_evidence(just_below) is False
