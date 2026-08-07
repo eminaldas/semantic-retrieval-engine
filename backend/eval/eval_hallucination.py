@@ -93,7 +93,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from google import genai
 
-from backend.query import step5_query_engine as qe
+from backend.query import query_engine as qe
 from backend.shared.paths import PROJECT_ROOT
 
 
@@ -102,7 +102,7 @@ def evaluate_question(record, session, qdrant_client, embedding_model, cross_enc
                        max_hops=2, seed_topk=20, top_n=5):
     """Tek bir golden soru icin tam pipeline'i (path+vektor+rerank+Answerer) calistirir,
     sonra hakem cagrisiyla cevabi kanitla kiyaslar. Kanit havuzu bossa None doner
-    (Answerer/Judge hic cagrilmaz, step5_query_engine.py'nin kendi __main__'indeki
+    (Answerer/Judge hic cagrilmaz, query_engine.py'nin kendi __main__'indeki
     'Kanit bulunamadi, Answerer atlaniyor' davranisiyla tutarli)."""
     candidate_paths = qe.find_candidate_paths(session, record["cause_entity_id"], record["target_entity_id"], max_hops)
     seed_chunk_ids = qe.vector_seed_search(qdrant_client, embedding_model, record["question"], seed_topk)

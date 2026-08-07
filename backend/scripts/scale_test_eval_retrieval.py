@@ -34,7 +34,7 @@ from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 
-from backend.query import step5_query_engine as qe
+from backend.query import query_engine as qe
 from backend.shared.paths import PROJECT_ROOT
 
 
