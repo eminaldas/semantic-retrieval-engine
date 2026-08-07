@@ -1,6 +1,6 @@
 # Answerer Prompt v0.1 (Module F: Answerer)
 
-Bu, `docs/01_architecture_v0.1.md` bölüm 9'daki Context Pack'i işleyen ve bölüm 3'teki ÇIKTI-1 sözleşmesini üreten LLM sistem promptudur. `step5_query_engine.py`'de her sorgu için bu prompt LLM'e gönderilecek, `{QUESTION}`/`{PATH_SUMMARY}`/`{EVIDENCE_BUNDLE}` yerine QueryEngine + EvidenceSelector'ın ürettiği gerçek değerler basılacaktır. Prompt İngilizce'dir (extraction promptuyla tutarlılık için); kod ve dokümantasyon Türkçe kalır.
+Bu, `docs/01_architecture_v0.1.md` bölüm 9'daki Context Pack'i işleyen ve bölüm 3'teki ÇIKTI-1 sözleşmesini üreten LLM sistem promptudur. `query_engine.py`'de her sorgu için bu prompt LLM'e gönderilecek, `{QUESTION}`/`{PATH_SUMMARY}`/`{EVIDENCE_BUNDLE}` yerine QueryEngine + EvidenceSelector'ın ürettiği gerçek değerler basılacaktır. Prompt İngilizce'dir (extraction promptuyla tutarlılık için); kod ve dokümantasyon Türkçe kalır.
 
 `answer_text` içindeki `[Sx]` referanslarının `used_sources`'ın bir alt kümesi olması kuralı (§3) prompt'ta talimat olarak veriliyor, **ayrıca kodda da doğrulanıyor** (`validate_citations`) — sadece LLM'in talimata uymasına güvenilmiyor.
 

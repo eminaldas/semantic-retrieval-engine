@@ -1,6 +1,6 @@
 # Extraction Prompt v0.1 (Module B: Extractor)
 
-Bu, `docs/01_architecture_v0.1.md` bölüm 5'te tanımlanan Extraction Contract'ı uygulayan LLM sistem promptudur. Adım 2'de (`step2_extractor.py`) her chunk için bu prompt LLM'e gönderilecek, `{CHUNK_TEXT}` yerine ilgili chunk'ın `text` alanı basılacaktır. Prompt İngilizce'dir (LLM talimatları için tutarlılık amacıyla İngilizce tutulur); kod ve dokümantasyon Türkçe kalır.
+Bu, `docs/01_architecture_v0.1.md` bölüm 5'te tanımlanan Extraction Contract'ı uygulayan LLM sistem promptudur. Adım 2'de (`extractor.py`) her chunk için bu prompt LLM'e gönderilecek, `{CHUNK_TEXT}` yerine ilgili chunk'ın `text` alanı basılacaktır. Prompt İngilizce'dir (LLM talimatları için tutarlılık amacıyla İngilizce tutulur); kod ve dokümantasyon Türkçe kalır.
 
 İlk manuel test çalıştırması (`ch_0001`, `sources/mimari_v1.txt`) için bkz. `artifacts/extraction.jsonl`.
 

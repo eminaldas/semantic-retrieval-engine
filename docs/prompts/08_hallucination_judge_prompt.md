@@ -1,6 +1,6 @@
 # Hallucination Judge Prompt v0.1 (Evaluation Harness — Faz 3)
 
-Bu, `step5_query_engine.py`'nin ürettiği bir cevabın (`answer_text`), kendisine gösterilen kanıta (`evidence_bundle`, `S1..Sn`) gerçekten dayanıp dayanmadığını değerlendiren hakem (judge) LLM promptudur (`eval_hallucination.py::call_judge`). `{EVIDENCE_BUNDLE}` ve `{ANSWER_TEXT}` yerine ilgili metinler basılır. Prompt İngilizce'dir (LLM talimatları için tutarlılık amacıyla), kod ve dokümantasyon Türkçe kalır.
+Bu, `query_engine.py`'nin ürettiği bir cevabın (`answer_text`), kendisine gösterilen kanıta (`evidence_bundle`, `S1..Sn`) gerçekten dayanıp dayanmadığını değerlendiren hakem (judge) LLM promptudur (`eval_hallucination.py::call_judge`). `{EVIDENCE_BUNDLE}` ve `{ANSWER_TEXT}` yerine ilgili metinler basılır. Prompt İngilizce'dir (LLM talimatları için tutarlılık amacıyla), kod ve dokümantasyon Türkçe kalır.
 
 ---
 

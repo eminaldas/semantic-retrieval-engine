@@ -1,7 +1,7 @@
 # Conversation Summary Prompt v0.1 (Conversation Memory module)
 
 Bir konusma turu, aktif pencereden (son WINDOW_SIZE tur) dusunce, tamamen
-atilmak yerine mevcut ozete katilir (`step5d_conversation_memory.py::fold_turn_into_summary`).
+atilmak yerine mevcut ozete katilir (`conversation_memory.py::fold_turn_into_summary`).
 `{EXISTING_SUMMARY}` yerine mevcut ozet (veya "(henuz ozet yok)"), `{QUESTION}`/`{ANSWER}`
 yerine dusen turun soru/cevap metni basilir. Prompt Ingilizce'dir, kod ve
 dokumantasyon Turkce kalir.
