@@ -171,6 +171,17 @@ def rerank_evidence(cross_encoder, question, evidence_pool, top_n=5):
     return ranked[:top_n]
 
 
+def has_sufficient_evidence(ranked_evidence, threshold):
+    """ranked_evidence: rerank_evidence() ciktisi [(chunk, score), ...], skora gore azalan
+    sirali. Bos ya da en iyi (top-1) skor esigin altindaysa False doner - MODE_GENERAL'in
+    Answerer'i hic cagirmadan yapisal bir 'kanit yetersiz' karari verebilmesi icin
+    (docs/superpowers/specs/2026-08-07-retrieval-confidence-gate-design.md)."""
+    if not ranked_evidence:
+        return False
+    top_score = ranked_evidence[0][1]
+    return top_score >= threshold
+
+
 class AnswererOutput(BaseModel):
     """docs/01_architecture_v0.1.md #3 (CIKTI-1)"""
     answer_text: str
