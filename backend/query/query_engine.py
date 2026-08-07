@@ -274,6 +274,7 @@ if __name__ == "__main__":
     parser.add_argument("--top-n", type=int, default=5, help="EvidenceSelector sonrasi kanit sayisi (varsayilan: 5, #4)")
     parser.add_argument("--top-risk", type=int, default=5, help="--mode open: PageRank risk siralamasinda gosterilecek entity sayisi (varsayilan: 5)")
     parser.add_argument("--no-answer", action="store_true", help="Sadece path/risk+evidence goster, Answerer (LLM) cagirma")
+    parser.add_argument("--force-answer", action="store_true", help="MODE_GENERAL'de yetersiz kanit olsa bile Answerer'i zorla cagir (varsayilan: en iyi kanit esigin altindaysa Answerer atlanir)")
     parser.add_argument("--no-memory", action="store_true", help="Konusma hafizasini devre disi birak (soru yeniden yazilmaz, tur kaydedilmez)")
     parser.add_argument("--clear-conversation", action="store_true", help="Kalici konusma gecmisini/ozetini sifirlar ve cikar (--question gerekmez)")
     args = parser.parse_args()
@@ -350,8 +351,15 @@ if __name__ == "__main__":
 
         general_summary = "(Bu genel bir bilgi sorgusu - nedensellik/risk analizi degil, sadece belge kanitina dayanarak cevaplaniyor.)"
 
+        insufficient_evidence = not args.force_answer and not has_sufficient_evidence(ranked_evidence, GENERAL_MODE_RELEVANCE_THRESHOLD)
+
         answer = None
-        if not args.no_answer:
+        if insufficient_evidence:
+            answer = AnswererOutput(
+                answer_text="Bu soru, yuklenen belgelerde ele alinmiyor gorunuyor.",
+                risk_level="LOW", used_sources=[], assumptions=[],
+            )
+        elif not args.no_answer:
             if genai_client is None:
                 print("\nUYARI: GEMINI_API_KEY tanimli degil, Answerer atlaniyor (--no-answer ile sessizce atlayabilirsin).")
             elif not ranked_evidence:
@@ -373,12 +381,14 @@ if __name__ == "__main__":
             print(f"  risk_level: {answer.risk_level}")
             print(f"  used_sources: {answer.used_sources}")
             print(f"  assumptions: {answer.assumptions}")
+            if insufficient_evidence:
+                print("  (Yeterli kanit bulunamadi. --force-answer ile zayif kanitla da olsa bir cevap denenebilir.)")
             if citation_issues:
                 print("  UYARI (kalite kurali ihlali - docs/01_architecture_v0.1.md #3):")
                 for issue in citation_issues:
                     print(f"    - {issue}")
 
-            if not args.no_memory:
+            if not args.no_memory and not insufficient_evidence:
                 summary_prompt_template = conv.load_prompt_template(SUMMARY_PROMPT_FILE)
                 conv.record_turn(
                     HISTORY_FILE, SUMMARY_FILE,
