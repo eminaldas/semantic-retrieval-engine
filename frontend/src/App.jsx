@@ -50,13 +50,18 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authenticated]);
 
-  async function handleAsk(question) {
-    const id = nextTurnId++;
-    setTurns((prev) => [...prev, { id, question, pending: true }]);
+  async function handleAsk(question, options = {}) {
+    const { turnId, forceAnswer } = options;
+    const id = turnId ?? nextTurnId++;
+    setTurns((prev) => {
+      const pendingTurn = { id, question, pending: true };
+      const exists = prev.some((t) => t.id === id);
+      return exists ? prev.map((t) => (t.id === id ? pendingTurn : t)) : [...prev, pendingTurn];
+    });
     setLoading(true);
     const startedAt = performance.now();
     try {
-      const response = await postQuery({ question });
+      const response = await postQuery({ question, force_answer: !!forceAnswer });
       const durationMs = performance.now() - startedAt;
       setTurns((prev) => prev.map((t) => (t.id === id ? { id, question, response, durationMs } : t)));
     } catch (err) {
@@ -64,6 +69,10 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleForceAnswer(turn) {
+    handleAsk(turn.question, { turnId: turn.id, forceAnswer: true });
   }
 
   async function handleClearConversation() {
@@ -139,6 +148,7 @@ export default function App() {
               turns={turns}
               selectedSid={selectedEvidence && selectedEvidence.sid}
               onSelectEvidence={handleSelectEvidence}
+              onForceAnswer={handleForceAnswer}
             />
             <QuestionForm onSubmit={handleAsk} loading={loading} />
           </div>
