@@ -228,6 +228,20 @@ if __name__ == "__main__":
     refusal_aggregate = aggregate_refusal_results(refusal_results)
     print(f"  refusal_accuracy: {refusal_aggregate['refusal_accuracy']:.2f}")
 
+    print("\n=== Yanlis-pozitif ret kontrolu (eval/golden_retrieval.jsonl, cevaplanabilir sorular) ===")
+    # Ayni evaluate_refusal_question/aggregate_refusal_results burada TERSTEN yorumlanir:
+    # golden_set'teki 5 soru bilinen sekilde cevaplanabilir, dolayisiyla correctly_refused=True
+    # gelmesi burada 'dogru ret' degil, gate'in bir cevaplanabilir soruyu yanlislikla reddettigi
+    # anlamina gelir (design spec SS8/SS10'da tanimlanan yanlis-pozitif ret riski).
+    false_refusal_results = []
+    for record in golden_set:
+        result = evaluate_refusal_question(record["question"], qdrant_client, embedding_model, cross_encoder, chunks_by_id)
+        false_refusal_results.append(result)
+        mark = "FAIL" if result["correctly_refused"] else "OK"
+        print(f"  [{mark}]  {result['question']}")
+    false_refusal_rate = aggregate_refusal_results(false_refusal_results)["refusal_accuracy"]
+    print(f"  false_refusal_rate: {false_refusal_rate:.2f}  (0.00 beklenir - gate cevaplanabilir sorulari yanlislikla reddetmemeli)")
+
     aggregate = aggregate_hallucination_results(results)
     print(f"\n=== Ozet ({len(results)} soru) ===")
     print(f"  groundedness_rate: {aggregate['groundedness_rate']:.2f}")
@@ -238,6 +252,8 @@ if __name__ == "__main__":
         "per_question": results,
         "refusal_aggregate": refusal_aggregate,
         "refusal_per_question": refusal_results,
+        "false_refusal_aggregate": {"false_refusal_rate": false_refusal_rate},
+        "false_refusal_per_question": false_refusal_results,
     }
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
     with open(LOG_FILE, "a", encoding="utf-8") as f:
