@@ -164,12 +164,15 @@ def build_entity_link_error_detail(failures):
     }
 
 
-def build_query_response(mode, structural, ranked_evidence, answer, citation_issues, answer_error=None):
+def build_query_response(mode, structural, ranked_evidence, answer, citation_issues, answer_error=None, insufficient_evidence=False):
     """mode: 'pair'/'open'/'general'. structural: build_pair_structural/build_open_structural'in
-    ciktisi (pair/open icin) ya da None (general icin - o modda yapisal bir kavram yok)."""
+    ciktisi (pair/open icin) ya da None (general icin - o modda yapisal bir kavram yok).
+    insufficient_evidence: MODE_GENERAL'de retrieval'in yeterli alaka bulamadigi durum -
+    docs/superpowers/specs/2026-08-07-retrieval-confidence-gate-design.md."""
     return {
         "mode": mode,
         "structural": structural,
+        "insufficient_evidence": insufficient_evidence,
         "evidence": [
             {
                 "sid": f"S{i}",
@@ -490,6 +493,7 @@ class QueryRequest(BaseModel):
     question: str
     max_hops: int = 2
     top_risk: int = 5
+    force_answer: bool = False
 
 
 @app.post("/api/query", dependencies=[Depends(require_session)])
@@ -558,10 +562,21 @@ def post_query(req: QueryRequest):
 
     ranked_evidence = qe.rerank_evidence(app.state.cross_encoder, effective_question, evidence_pool)
 
+    insufficient_evidence = (
+        mode == "general"
+        and not req.force_answer
+        and not qe.has_sufficient_evidence(ranked_evidence, qe.GENERAL_MODE_RELEVANCE_THRESHOLD)
+    )
+
     answer = None
     citation_issues = []
     answer_error = None
-    if app.state.genai_client is None:
+    if insufficient_evidence:
+        answer = qe.AnswererOutput(
+            answer_text="Bu soru, yuklenen belgelerde ele alinmiyor gorunuyor.",
+            risk_level="LOW", used_sources=[], assumptions=[],
+        )
+    elif app.state.genai_client is None:
         answer_error = "GEMINI_API_KEY tanimli degil, Answerer atlaniyor."
     elif not ranked_evidence:
         answer_error = "Kanit bulunamadi, Answerer atlaniyor."
@@ -577,9 +592,9 @@ def post_query(req: QueryRequest):
         except Exception as exc:
             answer_error = f"Gemini API hatasi: {exc}"
 
-    response = build_query_response(mode, structural, ranked_evidence, answer, citation_issues, answer_error)
+    response = build_query_response(mode, structural, ranked_evidence, answer, citation_issues, answer_error, insufficient_evidence=insufficient_evidence)
 
-    if answer is not None:
+    if answer is not None and not insufficient_evidence:
         conv.record_turn(
             HISTORY_FILE, SUMMARY_FILE,
             {"mode": mode, "question": req.question, "rewritten_question": effective_question,

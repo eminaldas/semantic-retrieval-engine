@@ -145,6 +145,19 @@ class TestBuildQueryResponse:
         assert result["mode"] == "open"
         assert result["structural"] == {"ranked_nodes": [{"entity_id": "DATABASE::postgresql", "score": 0.55}]}
 
+    def test_insufficient_evidence_flag_defaults_to_false(self):
+        result = dash.build_query_response("general", None, [], None, [], answer_error=None)
+        assert result["insufficient_evidence"] is False
+
+    def test_insufficient_evidence_flag_can_be_set(self):
+        answer = qe.AnswererOutput(
+            answer_text="Bu soru, yuklenen belgelerde ele alinmiyor gorunuyor.",
+            risk_level="LOW", used_sources=[], assumptions=[],
+        )
+        result = dash.build_query_response("general", None, [], answer, [], answer_error=None, insufficient_evidence=True)
+        assert result["insufficient_evidence"] is True
+        assert result["answer"]["answer_text"] == "Bu soru, yuklenen belgelerde ele alinmiyor gorunuyor."
+
 
 class TestBuildConversationHydrationResponse:
     def test_gui_turn_uses_stored_response_as_is(self):
