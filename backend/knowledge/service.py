@@ -16,12 +16,15 @@ class KnowledgeService:
         return self.config_loader()
 
     def resolve_project(self, project):
-        """Proje verilmezse: tek proje tanimliysa o, degilse config'teki default_project."""
-        config = {k: v for k, v in self._config().items() if not k.startswith("_")}
+        """Proje verilmezse: config'teki _default_project, o yoksa tek proje tanimliysa o, degilse hepsi."""
+        raw = self._config()
+        config = {k: v for k, v in raw.items() if not k.startswith("_")}
         if project:
             if project not in config:
                 raise ValueError(f"Bilinmeyen proje: {project}. Tanimli projeler: {', '.join(sorted(config)) or '(yok)'}")
             return project
+        if raw.get("_default_project") in config:
+            return raw["_default_project"]
         if len(config) == 1:
             return next(iter(config))
         return None  # tum projelerde ara
