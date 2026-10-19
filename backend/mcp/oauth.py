@@ -30,6 +30,8 @@ MAX_CLIENTS = 50
 MAX_FAILED_LOGINS = 5
 LOCKOUT_SECONDS = 900
 SCOPE = "mcp"
+# claude.ai kayitta client_secret_post isteyebiliyor; gizli istemciler de desteklenir
+CLIENT_AUTH_METHODS = ("none", "client_secret_post", "client_secret_basic")
 
 
 class OAuthError(Exception):
@@ -111,8 +113,7 @@ class OAuthProvider:
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code", "refresh_token"],
             "code_challenge_methods_supported": ["S256"],
-            "token_endpoint_auth_methods_supported": ["none"],
-            "scopes_supported": [SCOPE],
+            "token_endpoint_auth_methods_supported": list(CLIENT_AUTH_METHODS),
         }
 
     def resource_metadata(self, issuer, resource_path):
@@ -120,7 +121,6 @@ class OAuthProvider:
             "resource": issuer + resource_path,
             "authorization_servers": [issuer],
             "bearer_methods_supported": ["header"],
-            "scopes_supported": [SCOPE],
         }
 
     # --- akis ------------------------------------------------------------
@@ -132,21 +132,43 @@ class OAuthProvider:
         if not isinstance(uris, list) or not uris or not all(isinstance(u, str) and redirect_allowed(u) for u in uris):
             raise OAuthError("invalid_redirect_uri", "redirect_uris yalnizca claude.ai/claude.com (https) ya da localhost olabilir")
         name = str(body.get("client_name", ""))[:100]
+        auth_method = body.get("token_endpoint_auth_method") or "none"
+        if auth_method not in CLIENT_AUTH_METHODS:
+            raise OAuthError("invalid_client_metadata", f"desteklenen token_endpoint_auth_method: {', '.join(CLIENT_AUTH_METHODS)}")
         client_id = secrets.token_urlsafe(16)
+        client_secret = secrets.token_urlsafe(32) if auth_method != "none" else None
         with self._lock:
             if len(self._clients) >= MAX_CLIENTS:
                 raise OAuthError("invalid_client_metadata", "istemci kaydi siniri doldu")
-            self._clients[client_id] = {"redirect_uris": uris, "client_name": name}
+            self._clients[client_id] = {
+                "redirect_uris": uris,
+                "client_name": name,
+                "auth_method": auth_method,
+                "secret_digest": _digest(client_secret) if client_secret else None,
+            }
             self._save()
-        return {
+        response = {
             "client_id": client_id,
             "client_id_issued_at": int(self._clock()),
             "client_name": name,
             "redirect_uris": uris,
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
-            "token_endpoint_auth_method": "none",
+            "token_endpoint_auth_method": auth_method,
         }
+        if client_secret:
+            response["client_secret"] = client_secret
+            response["client_secret_expires_at"] = 0
+        return response
+
+    def _authenticate_client(self, client_id, client_secret):
+        # cagiran kilidi tutar; gizli istemcide secret zorunlu
+        client = self._clients.get(client_id or "")
+        if client is None:
+            raise OAuthError("invalid_client", "bilinmeyen client_id", 401)
+        expected = client.get("secret_digest")
+        if expected and not hmac.compare_digest(_digest(client_secret or ""), expected):
+            raise OAuthError("invalid_client", "client_secret yanlis", 401)
 
     def check_authorize_request(self, params):
         """Gecersiz istekte OAuthError; gecerliyse istemci adini doner (giris sayfasinda gosterilir)."""
@@ -196,6 +218,7 @@ class OAuthProvider:
                 raise OAuthError("invalid_grant", "kod gecersiz ya da suresi dolmus")
             if form.get("client_id") != entry["client_id"] or form.get("redirect_uri") != entry["redirect_uri"]:
                 raise OAuthError("invalid_grant", "client_id ya da redirect_uri eslesmiyor")
+            self._authenticate_client(entry["client_id"], form.get("client_secret"))
             verifier = form.get("code_verifier", "")
             if not verifier or not hmac.compare_digest(pkce_challenge(verifier), entry["code_challenge"]):
                 raise OAuthError("invalid_grant", "PKCE dogrulanamadi")
@@ -208,6 +231,7 @@ class OAuthProvider:
                 raise OAuthError("invalid_grant", "refresh token gecersiz ya da suresi dolmus")
             if form.get("client_id") and form["client_id"] != entry["client_id"]:
                 raise OAuthError("invalid_grant", "client_id eslesmiyor")
+            self._authenticate_client(entry["client_id"], form.get("client_secret"))
             return self._issue(entry["client_id"])
 
     def _issue(self, client_id):

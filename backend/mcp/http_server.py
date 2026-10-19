@@ -17,13 +17,14 @@ adres (OAuth issuer) .env'deki MCP_PUBLIC_URL'den okunur. Varsayilan port, makin
 diger gelistirme sunuculariyla cakismasin diye nadir kullanilan bir porttur.
 Calistirma: python -m backend.mcp.http_server [--port 47821]"""
 
+import base64
 import hmac
 import html
 import json
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
 from backend.mcp.oauth import OAuthError
 from backend.mcp.server import MCPServer, _error
@@ -55,6 +56,19 @@ def _first_values(query):
     return {k: v[0] for k, v in parse_qs(query, keep_blank_values=True).items()}
 
 
+def _basic_credentials(header):
+    if not header.startswith("Basic "):
+        return None
+    try:
+        decoded = base64.b64decode(header[len("Basic "):].strip()).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return None
+    client_id, sep, secret = decoded.partition(":")
+    if not sep:
+        return None
+    return unquote(client_id), unquote(secret)
+
+
 def make_handler(mcp_server, token, oauth=None, public_url=None):
     lock = threading.Lock()  # modeller ve Qdrant istemcisi tek istek tek seferde
 
@@ -62,7 +76,10 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
         server_version = "semantic-retrieval-engine"
 
         def log_message(self, fmt, *args):
-            sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
+            headers = getattr(self, "headers", None)
+            agent = headers.get("User-Agent", "-") if headers else "-"
+            note = getattr(self, "_auth_note", "")
+            sys.stderr.write("%s - %s - %s %s\n" % (self.address_string(), fmt % args, agent[:80], note))
 
         def _route(self):
             return urlparse(self.path).path
@@ -73,13 +90,22 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
             return "http://" + self.headers.get("Host", "127.0.0.1")
 
         def _authorized(self):
+            # claude.ai'de "No sign-in" + ozel istek basligi yolu icin sabit token X-API-Key'de de kabul edilir
+            api_key = self.headers.get("X-API-Key", "").strip()
+            if api_key and hmac.compare_digest(api_key.encode(), token.encode()):
+                return True
             header = self.headers.get("Authorization", "")
-            if not header.startswith("Bearer "):
+            scheme, _, presented = header.partition(" ")
+            presented = presented.strip()
+            if scheme.lower() != "bearer" or not presented:
+                self._auth_note = f"auth=yok sema={scheme[:10] or '-'}"
                 return False
-            presented = header[len("Bearer "):].strip()
             if hmac.compare_digest(presented.encode(), token.encode()):
                 return True
-            return oauth is not None and oauth.validate_access_token(presented)
+            if oauth is not None and oauth.validate_access_token(presented):
+                return True
+            self._auth_note = f"auth=gecersiz uzunluk={len(presented)}"  # token'in kendisi loglanmaz
+            return False
 
         def _send(self, status, body=None, headers=None, raw=None, content_type=None):
             if raw is not None:
@@ -168,6 +194,8 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
                 return self._send(400, _error(None, -32700, "Parse error"))
             if isinstance(message, list):
                 return self._send(400, _error(None, -32600, "Batch istekleri desteklenmiyor"))
+            if isinstance(message, dict):
+                self._auth_note = f"rpc={str(message.get('method'))[:40]}"
             with lock:
                 response = mcp_server.handle(message)
             if response is None:
@@ -191,9 +219,14 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
                     return self._send(exc.status, exc.body())
             form = _first_values(text)
             if route == "/token":
+                basic = _basic_credentials(self.headers.get("Authorization", ""))
+                if basic:  # client_secret_basic
+                    form["client_id"], form["client_secret"] = basic
+                self._auth_note = f"grant={form.get('grant_type', '-')[:20]}"
                 try:
                     return self._send(200, oauth.exchange(form))
                 except OAuthError as exc:
+                    self._auth_note += f" hata={exc.error}"
                     return self._send(exc.status, exc.body())
             # /authorize: giris formu gonderildi
             password = form.pop("password", "")

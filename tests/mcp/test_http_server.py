@@ -48,6 +48,18 @@ def test_missing_or_wrong_token_is_401(base_url):
     assert _post(base_url + "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "ping"}, token="y" * 32)[0] == 401
 
 
+def test_api_key_header_is_accepted(base_url):
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}).encode()
+    for key, expected in ((TOKEN, 200), ("y" * 32, 401)):
+        req = urllib.request.Request(base_url + "/mcp", data=body, method="POST",
+                                     headers={"Content-Type": "application/json", "X-API-Key": key})
+        try:
+            with urllib.request.urlopen(req) as resp:
+                assert resp.status == expected
+        except urllib.error.HTTPError as exc:
+            assert exc.code == expected
+
+
 def test_tool_call_round_trip(base_url):
     status, body = _post(base_url + "/mcp", {"jsonrpc": "2.0", "id": 7, "method": "tools/call",
                                              "params": {"name": "search", "arguments": {"query": "odul"}}})

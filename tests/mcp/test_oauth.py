@@ -97,6 +97,23 @@ def test_access_token_expires_and_refresh_rotates():
         provider.exchange({"grant_type": "refresh_token", "refresh_token": tokens["refresh_token"]})
 
 
+def test_confidential_client_needs_its_secret(provider):
+    registered = provider.register({"redirect_uris": [REDIRECT], "token_endpoint_auth_method": "client_secret_post"})
+    client_id, secret = registered["client_id"], registered["client_secret"]
+    code = provider.approve(_authorize_params(client_id), PASSWORD)
+    with pytest.raises(OAuthError) as exc:
+        provider.exchange({**_token_form(client_id, code), "client_secret": "yanlis"})
+    assert exc.value.error == "invalid_client"
+    code = provider.approve(_authorize_params(client_id), PASSWORD)
+    tokens = provider.exchange({**_token_form(client_id, code), "client_secret": secret})
+    assert provider.validate_access_token(tokens["access_token"])
+
+
+def test_register_rejects_unknown_auth_method(provider):
+    with pytest.raises(OAuthError):
+        provider.register({"redirect_uris": [REDIRECT], "token_endpoint_auth_method": "private_key_jwt"})
+
+
 def test_tokens_survive_restart_without_plaintext(tmp_path):
     store = tmp_path / "store.json"
     provider = OAuthProvider(PASSWORD, store_path=str(store))
