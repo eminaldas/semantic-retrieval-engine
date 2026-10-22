@@ -1,6 +1,6 @@
 # Conflict Classifier Prompt v0.1 (Self-Correction, Stage 1)
 
-Bu, `docs/superpowers/specs/2026-07-22-self-correction-loop-design.md` §3'teki Aşama 1 sınıflandırıcısını uygulayan LLM sistem promptudur. `step6_self_correction.py`, aynı kaynak entity hakkında hem eski hem yeni chunk'lardan gelen kanıt bulduğunda bu promptu çağırır — amaç, pahalı 3 ajanlı tartışmayı sadece gerçek çelişkilerde tetiklemek. **2026-08-02 güncellemesi** (`docs/superpowers/specs/2026-08-02-self-correction-negation-blindspot-design.md`): hedef entity artık eski ve yeni taraf arasında farklı olabilir (örn. bir mekanizmanın başka bir mekanizmayla değiştirilmesi) — bu, bilinçli olarak değerlendirilmesi gereken senaryolardan biri, önceden algılama mekanizması bunu hiç görmüyordu.
+Bu, `docs/superpowers/specs/2026-07-22-self-correction-loop-design.md` §3'teki Aşama 1 sınıflandırıcısını uygulayan LLM sistem promptudur. `self_correction.py`, aynı kaynak entity hakkında hem eski hem yeni chunk'lardan gelen kanıt bulduğunda bu promptu çağırır — amaç, pahalı 3 ajanlı tartışmayı sadece gerçek çelişkilerde tetiklemek. **2026-08-02 güncellemesi** (`docs/superpowers/specs/2026-08-02-self-correction-negation-blindspot-design.md`): hedef entity artık eski ve yeni taraf arasında farklı olabilir (örn. bir mekanizmanın başka bir mekanizmayla değiştirilmesi) — bu, bilinçli olarak değerlendirilmesi gereken senaryolardan biri, önceden algılama mekanizması bunu hiç görmüyordu.
 
 ---
 

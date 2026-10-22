@@ -2,7 +2,7 @@
 
 Bu, bir takip sorusunu (follow-up question) onceki konusma baglamiyla kendi kendine
 yeten (standalone) bir soruya donusturmek icin kullanilan LLM promptudur
-(`step5d_conversation_memory.py::rewrite_question`). `{CONVERSATION_CONTEXT}` yerine
+(`conversation_memory.py::rewrite_question`). `{CONVERSATION_CONTEXT}` yerine
 onceki konusmanin ozeti + son turlari, `{QUESTION}` yerine kullanicinin yeni sorusu
 basilir. Bu adim SADECE soruyu yeniden yazmak icindir - rewrite edilmis soru daha
 sonra normal (gecmisten habersiz) retrieval+Answerer zincirinden gecer, boylece

@@ -1,6 +1,6 @@
 # Mode Detection Prompt v0.1 (Automatic mode routing)
 
-Bu, kullanıcının doğal dilde sorduğu bir soruyu (`--question`) hangi sorgu modunun (general/pair/open) cevaplayacağına otomatik karar vermek için kullanılan LLM promptudur (`step5_query_engine.py::detect_mode_from_question`). `{QUESTION}` yerine kullanıcının soru metni (konuşma hafızasıyla yeniden yazılmış, standalone hali) basılır. Prompt İngilizce'dir (LLM talimatları için tutarlılık amacıyla), kod ve dokümantasyon Türkçe kalır.
+Bu, kullanıcının doğal dilde sorduğu bir soruyu (`--question`) hangi sorgu modunun (general/pair/open) cevaplayacağına otomatik karar vermek için kullanılan LLM promptudur (`query_engine.py::detect_mode_from_question`). `{QUESTION}` yerine kullanıcının soru metni (konuşma hafızasıyla yeniden yazılmış, standalone hali) basılır. Prompt İngilizce'dir (LLM talimatları için tutarlılık amacıyla), kod ve dokümantasyon Türkçe kalır.
 
 ---
 

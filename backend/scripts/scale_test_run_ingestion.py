@@ -27,13 +27,13 @@ if __name__ == "__main__":
 
     start = time.time()
     for i, file_path in enumerate(test_files, start=1):
-        result = subprocess.run([sys.executable, "-m", "backend.pipeline.step1_chunker", file_path], cwd=BASE_DIR)
+        result = subprocess.run([sys.executable, "-m", "backend.pipeline.chunker", file_path], cwd=BASE_DIR)
         if result.returncode != 0:
             print(f"UYARI: {file_path} step1'de basarisiz oldu, atlaniyor.", flush=True)
         print(f"  [{i}/{len(test_files)}] step1 tamamlandi: {os.path.basename(file_path)}", flush=True)
-    timings["step1_chunker_total_seconds"] = time.time() - start
+    timings["chunker_total_seconds"] = time.time() - start
 
-    for step_module in ["backend.pipeline.step2_extractor", "backend.pipeline.step3_graph_writer", "backend.pipeline.step4_vector_writer"]:
+    for step_module in ["backend.pipeline.extractor", "backend.pipeline.graph_writer", "backend.pipeline.vector_writer"]:
         print(f"\n=== {step_module} calistiriliyor ===", flush=True)
         start = time.time()
         result = subprocess.run([sys.executable, "-m", step_module], cwd=BASE_DIR)

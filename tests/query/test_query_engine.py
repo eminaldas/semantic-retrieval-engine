@@ -1,4 +1,4 @@
-from backend.query import step5_query_engine as qe
+from backend.query import query_engine as qe
 
 
 def rel(type_, confidence, evidence_chunk_ids):
@@ -202,3 +202,26 @@ class TestDetectModeFromQuestion:
         monkeypatch.setattr(qe.gemini_retry, "call_with_retry", raise_runtime_error)
         result = qe.detect_mode_from_question("soru", object(), "model", "template")
         assert result is None
+
+
+class TestHasSufficientEvidence:
+    def test_empty_evidence_is_insufficient(self):
+        assert qe.has_sufficient_evidence([], threshold=0.0) is False
+
+    def test_top_score_at_or_above_threshold_is_sufficient(self):
+        evidence = [({"chunk_id": "a"}, 5.0), ({"chunk_id": "b"}, 1.0)]
+        assert qe.has_sufficient_evidence(evidence, threshold=5.0) is True
+
+    def test_top_score_below_threshold_is_insufficient(self):
+        evidence = [({"chunk_id": "a"}, 2.9), ({"chunk_id": "b"}, -3.6)]
+        assert qe.has_sufficient_evidence(evidence, threshold=3.0) is False
+
+    def test_only_top_score_matters_not_lower_ranked_scores(self):
+        evidence = [({"chunk_id": "a"}, 10.0), ({"chunk_id": "b"}, -100.0)]
+        assert qe.has_sufficient_evidence(evidence, threshold=9.0) is True
+
+    def test_default_threshold_is_module_constant(self):
+        just_above = [({"chunk_id": "a"}, qe.GENERAL_MODE_RELEVANCE_THRESHOLD + 0.01)]
+        just_below = [({"chunk_id": "a"}, qe.GENERAL_MODE_RELEVANCE_THRESHOLD - 0.01)]
+        assert qe.has_sufficient_evidence(just_above) is True
+        assert qe.has_sufficient_evidence(just_below) is False

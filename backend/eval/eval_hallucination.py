@@ -87,13 +87,42 @@ def aggregate_hallucination_results(results):
     return {"groundedness_rate": sum(r["grounded"] for r in results) / n}
 
 
+def aggregate_refusal_results(results):
+    """golden_refusal.jsonl sorularinin ne kadari dogru sekilde reddedildi
+    (has_sufficient_evidence False dondu) - refusal_accuracy hesaplar. Bos liste
+    icin sifira bolme yerine 0.0 doner (aggregate_hallucination_results ile ayni desen)."""
+    n = len(results)
+    if n == 0:
+        return {"refusal_accuracy": 0.0}
+    return {"refusal_accuracy": sum(r["correctly_refused"] for r in results) / n}
+
+
+def evaluate_refusal_question(question, qdrant_client, embedding_model, cross_encoder, chunks_by_id,
+                               vector_seed_search_fn=None, seed_topk=20, top_n=5, threshold=None):
+    """Tek bir golden_refusal.jsonl sorusu icin sadece vektor arama + rerank + esik kontrolunu
+    calistirir - Neo4j'ye ya da Answerer/Judge'a hic ihtiyac yok (MODE_GENERAL'in gate'i zaten
+    Answerer'i cagirmadan karar veriyor, bkz. docs/superpowers/specs/
+    2026-08-07-retrieval-confidence-gate-design.md). vector_seed_search_fn / threshold test'lerde
+    gercek Qdrant/gercek esik olmadan sahte degerlerle cagirabilmek icin opsiyonel enjeksiyon -
+    verilmezse gercek qe.vector_seed_search / qe.GENERAL_MODE_RELEVANCE_THRESHOLD kullanilir."""
+    search_fn = vector_seed_search_fn or qe.vector_seed_search
+    effective_threshold = qe.GENERAL_MODE_RELEVANCE_THRESHOLD if threshold is None else threshold
+
+    seed_chunk_ids = search_fn(qdrant_client, embedding_model, question, seed_topk)
+    evidence_pool = [chunks_by_id[cid] for cid in seed_chunk_ids if cid in chunks_by_id]
+    ranked_evidence = qe.rerank_evidence(cross_encoder, question, evidence_pool, top_n)
+
+    correctly_refused = not qe.has_sufficient_evidence(ranked_evidence, effective_threshold)
+    return {"question": question, "correctly_refused": correctly_refused}
+
+
 import os
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from google import genai
 
-from backend.query import step5_query_engine as qe
+from backend.query import query_engine as qe
 from backend.shared.paths import PROJECT_ROOT
 
 
@@ -102,7 +131,7 @@ def evaluate_question(record, session, qdrant_client, embedding_model, cross_enc
                        max_hops=2, seed_topk=20, top_n=5):
     """Tek bir golden soru icin tam pipeline'i (path+vektor+rerank+Answerer) calistirir,
     sonra hakem cagrisiyla cevabi kanitla kiyaslar. Kanit havuzu bossa None doner
-    (Answerer/Judge hic cagrilmaz, step5_query_engine.py'nin kendi __main__'indeki
+    (Answerer/Judge hic cagrilmaz, query_engine.py'nin kendi __main__'indeki
     'Kanit bulunamadi, Answerer atlaniyor' davranisiyla tutarli)."""
     candidate_paths = qe.find_candidate_paths(session, record["cause_entity_id"], record["target_entity_id"], max_hops)
     seed_chunk_ids = qe.vector_seed_search(qdrant_client, embedding_model, record["question"], seed_topk)
@@ -187,6 +216,32 @@ if __name__ == "__main__":
             print(f"  [grounded={grounded_mark}]{diverges_mark} unsupported={len(result['unsupported_claims'])} citation_issues={len(result['citation_issues'])}  {result['question']}")
     neo4j_driver.close()
 
+    print("\n=== Reddetmeli sorular (eval/golden_refusal.jsonl) ===")
+    REFUSAL_SET_FILE = os.path.join(BASE_DIR, "eval", "golden_refusal.jsonl")
+    refusal_golden_set = load_golden_set(REFUSAL_SET_FILE)
+    refusal_results = []
+    for record in refusal_golden_set:
+        result = evaluate_refusal_question(record["question"], qdrant_client, embedding_model, cross_encoder, chunks_by_id)
+        refusal_results.append(result)
+        mark = "OK" if result["correctly_refused"] else "FAIL"
+        print(f"  [correctly_refused={mark}]  {result['question']}")
+    refusal_aggregate = aggregate_refusal_results(refusal_results)
+    print(f"  refusal_accuracy: {refusal_aggregate['refusal_accuracy']:.2f}")
+
+    print("\n=== Yanlis-pozitif ret kontrolu (eval/golden_retrieval.jsonl, cevaplanabilir sorular) ===")
+    # Ayni evaluate_refusal_question/aggregate_refusal_results burada TERSTEN yorumlanir:
+    # golden_set'teki 5 soru bilinen sekilde cevaplanabilir, dolayisiyla correctly_refused=True
+    # gelmesi burada 'dogru ret' degil, gate'in bir cevaplanabilir soruyu yanlislikla reddettigi
+    # anlamina gelir (design spec SS8/SS10'da tanimlanan yanlis-pozitif ret riski).
+    false_refusal_results = []
+    for record in golden_set:
+        result = evaluate_refusal_question(record["question"], qdrant_client, embedding_model, cross_encoder, chunks_by_id)
+        false_refusal_results.append(result)
+        mark = "FAIL" if result["correctly_refused"] else "OK"
+        print(f"  [{mark}]  {result['question']}")
+    false_refusal_rate = aggregate_refusal_results(false_refusal_results)["refusal_accuracy"]
+    print(f"  false_refusal_rate: {false_refusal_rate:.2f}  (0.00 beklenir - gate cevaplanabilir sorulari yanlislikla reddetmemeli)")
+
     aggregate = aggregate_hallucination_results(results)
     print(f"\n=== Ozet ({len(results)} soru) ===")
     print(f"  groundedness_rate: {aggregate['groundedness_rate']:.2f}")
@@ -195,6 +250,10 @@ if __name__ == "__main__":
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "aggregate": aggregate,
         "per_question": results,
+        "refusal_aggregate": refusal_aggregate,
+        "refusal_per_question": refusal_results,
+        "false_refusal_aggregate": {"false_refusal_rate": false_refusal_rate},
+        "false_refusal_per_question": false_refusal_results,
     }
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
     with open(LOG_FILE, "a", encoding="utf-8") as f:

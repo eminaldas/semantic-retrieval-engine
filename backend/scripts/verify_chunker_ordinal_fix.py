@@ -1,4 +1,4 @@
-"""step1_chunker.py::split_into_sentences'in rakam+nokta duzeltmesini
+"""chunker.py::split_into_sentences'in rakam+nokta duzeltmesini
 gercek dosyalar uzerinde dogrulayan, bir kereye mahsus dogrulama scripti.
 docs/superpowers/specs/2026-08-01-chunker-ordinal-split-fix-design.md.
 artifacts/ veya Neo4j/Qdrant'a hicbir yazma yapmaz - salt okunur dogrulama."""
@@ -8,7 +8,7 @@ import re
 
 from sentence_transformers import SentenceTransformer
 
-from backend.pipeline import step1_chunker as chunker
+from backend.pipeline import chunker
 from backend.shared.paths import PROJECT_ROOT
 
 BASE_DIR = PROJECT_ROOT

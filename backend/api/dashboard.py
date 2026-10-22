@@ -19,12 +19,12 @@ from pydantic import BaseModel
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
-from backend.query import step5_query_engine as qe
-from backend.query import step5c_risk_ranking as risk_ranking
-from backend.query import step5b_entity_linker
-from backend.pipeline import step1_chunker
+from backend.query import query_engine as qe
+from backend.query import risk_ranking
+from backend.query import entity_linker
+from backend.pipeline import chunker
 from backend.management import manage_sources
-from backend.query import step5d_conversation_memory as conv
+from backend.query import conversation_memory as conv
 from backend.shared import gemini_usage
 from backend.shared.paths import PROJECT_ROOT
 
@@ -45,11 +45,11 @@ FRONTEND_DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
 FRONTEND_INDEX_FILE = os.path.join(FRONTEND_DIST_DIR, "index.html")
 SOURCES_DIR = os.path.join(BASE_DIR, "sources")
 UPLOAD_STEPS = [
-    ("backend.pipeline.step1_chunker", "Chunking"),
-    ("backend.pipeline.step2_extractor", "Çıkarım yapılıyor"),
-    ("backend.pipeline.step3_graph_writer", "Graf yazılıyor"),
-    ("backend.pipeline.step4_vector_writer", "Vektör yazılıyor"),
-    ("backend.pipeline.step6_self_correction", "Kendini-düzeltme"),
+    ("backend.pipeline.chunker", "Chunking"),
+    ("backend.pipeline.extractor", "Çıkarım yapılıyor"),
+    ("backend.pipeline.graph_writer", "Graf yazılıyor"),
+    ("backend.pipeline.vector_writer", "Vektör yazılıyor"),
+    ("backend.pipeline.self_correction", "Kendini-düzeltme"),
 ]
 
 
@@ -156,7 +156,7 @@ def verify_session_token(token, secret, max_age_seconds=7 * 24 * 3600):
 
 
 def build_entity_link_error_detail(failures):
-    """step5b_entity_linker.EntityLinkError.failures -> HTTPException detail sozlugu.
+    """entity_linker.EntityLinkError.failures -> HTTPException detail sozlugu.
     Kullaniciya CLI'nin ham aday listesi yerine anlasilir, kisa bir mesaj gosterilir."""
     return {
         "message": "Sorunuzdaki varlıkları tanıyamadım, lütfen daha açık ifade eder misiniz?",
@@ -164,12 +164,15 @@ def build_entity_link_error_detail(failures):
     }
 
 
-def build_query_response(mode, structural, ranked_evidence, answer, citation_issues, answer_error=None):
+def build_query_response(mode, structural, ranked_evidence, answer, citation_issues, answer_error=None, insufficient_evidence=False):
     """mode: 'pair'/'open'/'general'. structural: build_pair_structural/build_open_structural'in
-    ciktisi (pair/open icin) ya da None (general icin - o modda yapisal bir kavram yok)."""
+    ciktisi (pair/open icin) ya da None (general icin - o modda yapisal bir kavram yok).
+    insufficient_evidence: MODE_GENERAL'de retrieval'in yeterli alaka bulamadigi durum -
+    docs/superpowers/specs/2026-08-07-retrieval-confidence-gate-design.md."""
     return {
         "mode": mode,
         "structural": structural,
+        "insufficient_evidence": insufficient_evidence,
         "evidence": [
             {
                 "sid": f"S{i}",
@@ -246,7 +249,7 @@ def run_upload_job(job_id, file_path, source_id, chunks_file, extraction_file, n
             "error_message": None, "result": None,
         }
         args = [sys.executable, "-m", step_module]
-        if step_module == "backend.pipeline.step1_chunker":
+        if step_module == "backend.pipeline.chunker":
             args.append(file_path)
         result = subprocess.run(args, cwd=BASE_DIR)
         if result.returncode != 0:
@@ -291,8 +294,8 @@ async def lifespan(app: FastAPI):
     app.state.genai_client = genai.Client(api_key=api_key) if api_key else None
     app.state.answerer_model = os.environ.get("GEMINI_ANSWERER_MODEL", qe.DEFAULT_ANSWERER_MODEL)
     app.state.answerer_prompt_template = qe.load_prompt_template(ANSWERER_PROMPT_FILE)
-    app.state.linker_model = os.environ.get("GEMINI_EXTRACTOR_MODEL", step5b_entity_linker.DEFAULT_MODEL)
-    app.state.linker_prompt_template = step5b_entity_linker.load_prompt_template(LINKER_PROMPT_FILE)
+    app.state.linker_model = os.environ.get("GEMINI_EXTRACTOR_MODEL", entity_linker.DEFAULT_MODEL)
+    app.state.linker_prompt_template = entity_linker.load_prompt_template(LINKER_PROMPT_FILE)
     app.state.mode_detection_prompt_template = qe.load_prompt_template(MODE_DETECTION_PROMPT_FILE)
     app.state.rewrite_prompt_template = conv.load_prompt_template(REWRITE_PROMPT_FILE)
     app.state.summary_prompt_template = conv.load_prompt_template(SUMMARY_PROMPT_FILE)
@@ -440,7 +443,7 @@ def get_source_content(source_id: str):
 async def upload_source(file: UploadFile, background_tasks: BackgroundTasks):
     source_id = file.filename
     ext = os.path.splitext(source_id)[1].lower()
-    if ext not in step1_chunker.SUPPORTED_EXTENSIONS:
+    if ext not in chunker.SUPPORTED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Desteklenmeyen dosya turu: {ext}")
     if any(job["status"] == "running" for job in app.state.upload_jobs.values()):
         raise HTTPException(status_code=409, detail="Baska bir yukleme devam ediyor.")
@@ -490,6 +493,7 @@ class QueryRequest(BaseModel):
     question: str
     max_hops: int = 2
     top_risk: int = 5
+    force_answer: bool = False
 
 
 @app.post("/api/query", dependencies=[Depends(require_session)])
@@ -523,12 +527,12 @@ def post_query(req: QueryRequest):
             if app.state.genai_client is None:
                 raise HTTPException(status_code=422, detail={"message": "Bu mod icin GEMINI_API_KEY gerekli."})
             try:
-                link_result = step5b_entity_linker.link_entities(
+                link_result = entity_linker.link_entities(
                     effective_question, app.state.qdrant_client, app.state.embedding_model,
                     app.state.genai_client, app.state.linker_model, app.state.linker_prompt_template,
                 )
                 cause_id, target_id = link_result.cause_entity_id, link_result.target_entity_id
-            except step5b_entity_linker.EntityLinkError as exc:
+            except entity_linker.EntityLinkError as exc:
                 if not mode_was_auto_detected:
                     raise HTTPException(status_code=422, detail=build_entity_link_error_detail(exc.failures))
                 mode = "general"
@@ -558,10 +562,21 @@ def post_query(req: QueryRequest):
 
     ranked_evidence = qe.rerank_evidence(app.state.cross_encoder, effective_question, evidence_pool)
 
+    insufficient_evidence = (
+        mode == "general"
+        and not req.force_answer
+        and not qe.has_sufficient_evidence(ranked_evidence, qe.GENERAL_MODE_RELEVANCE_THRESHOLD)
+    )
+
     answer = None
     citation_issues = []
     answer_error = None
-    if app.state.genai_client is None:
+    if insufficient_evidence:
+        answer = qe.AnswererOutput(
+            answer_text="Bu soru, yuklenen belgelerde ele alinmiyor gorunuyor.",
+            risk_level="LOW", used_sources=[], assumptions=[],
+        )
+    elif app.state.genai_client is None:
         answer_error = "GEMINI_API_KEY tanimli degil, Answerer atlaniyor."
     elif not ranked_evidence:
         answer_error = "Kanit bulunamadi, Answerer atlaniyor."
@@ -577,9 +592,9 @@ def post_query(req: QueryRequest):
         except Exception as exc:
             answer_error = f"Gemini API hatasi: {exc}"
 
-    response = build_query_response(mode, structural, ranked_evidence, answer, citation_issues, answer_error)
+    response = build_query_response(mode, structural, ranked_evidence, answer, citation_issues, answer_error, insufficient_evidence=insufficient_evidence)
 
-    if answer is not None:
+    if answer is not None and not insufficient_evidence:
         conv.record_turn(
             HISTORY_FILE, SUMMARY_FILE,
             {"mode": mode, "question": req.question, "rewritten_question": effective_question,

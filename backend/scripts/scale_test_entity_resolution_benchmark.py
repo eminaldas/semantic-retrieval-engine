@@ -13,7 +13,7 @@ from neo4j import GraphDatabase
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 
-from backend.pipeline import step3_graph_writer as gw
+from backend.pipeline import graph_writer as gw
 from backend.shared.paths import PROJECT_ROOT
 
 SCALE_TEST_TYPE = "SCALE_TEST_ENTITY"

@@ -3,7 +3,7 @@ import hmac
 import time
 
 from backend.api import dashboard as dash
-from backend.query import step5_query_engine as qe
+from backend.query import query_engine as qe
 
 
 class TestBuildGraphResponse:
@@ -144,6 +144,19 @@ class TestBuildQueryResponse:
         result = dash.build_query_response("open", structural, [], None, [], answer_error="Kanit bulunamadi")
         assert result["mode"] == "open"
         assert result["structural"] == {"ranked_nodes": [{"entity_id": "DATABASE::postgresql", "score": 0.55}]}
+
+    def test_insufficient_evidence_flag_defaults_to_false(self):
+        result = dash.build_query_response("general", None, [], None, [], answer_error=None)
+        assert result["insufficient_evidence"] is False
+
+    def test_insufficient_evidence_flag_can_be_set(self):
+        answer = qe.AnswererOutput(
+            answer_text="Bu soru, yuklenen belgelerde ele alinmiyor gorunuyor.",
+            risk_level="LOW", used_sources=[], assumptions=[],
+        )
+        result = dash.build_query_response("general", None, [], answer, [], answer_error=None, insufficient_evidence=True)
+        assert result["insufficient_evidence"] is True
+        assert result["answer"]["answer_text"] == "Bu soru, yuklenen belgelerde ele alinmiyor gorunuyor."
 
 
 class TestBuildConversationHydrationResponse:

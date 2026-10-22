@@ -13,9 +13,9 @@ from pydantic import BaseModel
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
-from backend.query import step5b_entity_linker
-from backend.query import step5c_risk_ranking as risk_ranking
-from backend.query import step5d_conversation_memory as conv
+from backend.query import entity_linker
+from backend.query import risk_ranking
+from backend.query import conversation_memory as conv
 from backend.shared import gemini_retry
 from backend.shared import gemini_usage
 from backend.shared.paths import PROJECT_ROOT
@@ -38,6 +38,11 @@ RELATION_WEIGHTS = {
     "RISKS": 2, "IMPACTS": 2, "DEGRADES": 2, "IMPROVES": 2,
     "DEPENDS_ON": 1, "USES": 1, "MITIGATES": 1, "PREVENTS": 1,
 }
+
+# docs/superpowers/specs/2026-08-07-retrieval-confidence-gate-design.md #4: eval/golden_retrieval.jsonl
+# (5 cevaplanmali) + eval/golden_refusal.jsonl (8 reddetmeli) uzerinde canli olculdu (bkz. bu
+# task'in implementasyon raporundaki Step 3 ciktisi).
+GENERAL_MODE_RELEVANCE_THRESHOLD = -1.5  # cevaplanmali min -0.829, reddetmeli max -2.130 arasindaki orta nokta
 
 
 def resolve_mode(mode_arg, cause, target):
@@ -171,6 +176,17 @@ def rerank_evidence(cross_encoder, question, evidence_pool, top_n=5):
     return ranked[:top_n]
 
 
+def has_sufficient_evidence(ranked_evidence, threshold=GENERAL_MODE_RELEVANCE_THRESHOLD):
+    """ranked_evidence: rerank_evidence() ciktisi [(chunk, score), ...], skora gore azalan
+    sirali. Bos ya da en iyi (top-1) skor esigin altindaysa False doner - MODE_GENERAL'in
+    Answerer'i hic cagirmadan yapisal bir 'kanit yetersiz' karari verebilmesi icin
+    (docs/superpowers/specs/2026-08-07-retrieval-confidence-gate-design.md)."""
+    if not ranked_evidence:
+        return False
+    top_score = ranked_evidence[0][1]
+    return top_score >= threshold
+
+
 class AnswererOutput(BaseModel):
     """docs/01_architecture_v0.1.md #3 (CIKTI-1)"""
     answer_text: str
@@ -180,7 +196,7 @@ class AnswererOutput(BaseModel):
 
 
 def load_prompt_template(prompt_path):
-    """docs/prompts/*.md icindeki fenced code block'u okur (step2_extractor.py ile ayni sozlesme)."""
+    """docs/prompts/*.md icindeki fenced code block'u okur (extractor.py ile ayni sozlesme)."""
     with open(prompt_path, "r", encoding="utf-8") as f:
         content = f.read()
     start = content.index("```\n") + len("```\n")
@@ -192,7 +208,7 @@ def build_context_pack(question, best_path, ranked_evidence, path_summary_overri
     """docs/01_architecture_v0.1.md #9: question + reasoning_path_summary + evidence_bundle.
 
     path_summary_override: verilirse best_path'ten turetme atlanir, bu string
-    dogrudan kullanilir - MODE_A'nin (step5c_risk_ranking.py) risk siralamasi
+    dogrudan kullanilir - MODE_A'nin (risk_ranking.py) risk siralamasi
     metnini enjekte etmesi icin (MODE_B'nin best_path -> format_path akisi degismedi)."""
     if path_summary_override is not None:
         path_summary = path_summary_override
@@ -258,6 +274,7 @@ if __name__ == "__main__":
     parser.add_argument("--top-n", type=int, default=5, help="EvidenceSelector sonrasi kanit sayisi (varsayilan: 5, #4)")
     parser.add_argument("--top-risk", type=int, default=5, help="--mode open: PageRank risk siralamasinda gosterilecek entity sayisi (varsayilan: 5)")
     parser.add_argument("--no-answer", action="store_true", help="Sadece path/risk+evidence goster, Answerer (LLM) cagirma")
+    parser.add_argument("--force-answer", action="store_true", help="MODE_GENERAL'de yetersiz kanit olsa bile Answerer'i zorla cagir (varsayilan: en iyi kanit esigin altindaysa Answerer atlanir)")
     parser.add_argument("--no-memory", action="store_true", help="Konusma hafizasini devre disi birak (soru yeniden yazilmaz, tur kaydedilmez)")
     parser.add_argument("--clear-conversation", action="store_true", help="Kalici konusma gecmisini/ozetini sifirlar ve cikar (--question gerekmez)")
     args = parser.parse_args()
@@ -303,7 +320,7 @@ if __name__ == "__main__":
 
     if mode_was_auto_detected:
         mode_detection_prompt = load_prompt_template(MODE_DETECTION_PROMPT_FILE)
-        mode_detection_model = os.environ.get("GEMINI_EXTRACTOR_MODEL", step5b_entity_linker.DEFAULT_MODEL)
+        mode_detection_model = os.environ.get("GEMINI_EXTRACTOR_MODEL", entity_linker.DEFAULT_MODEL)
         detected_mode = detect_mode_from_question(effective_question, genai_client, mode_detection_model, mode_detection_prompt)
         args.mode = resolve_mode(detected_mode, args.cause, args.target)
     else:
@@ -334,8 +351,15 @@ if __name__ == "__main__":
 
         general_summary = "(Bu genel bir bilgi sorgusu - nedensellik/risk analizi degil, sadece belge kanitina dayanarak cevaplaniyor.)"
 
+        insufficient_evidence = not args.force_answer and not has_sufficient_evidence(ranked_evidence, GENERAL_MODE_RELEVANCE_THRESHOLD)
+
         answer = None
-        if not args.no_answer:
+        if insufficient_evidence:
+            answer = AnswererOutput(
+                answer_text="Bu soru, yuklenen belgelerde ele alinmiyor gorunuyor.",
+                risk_level="LOW", used_sources=[], assumptions=[],
+            )
+        elif not args.no_answer:
             if genai_client is None:
                 print("\nUYARI: GEMINI_API_KEY tanimli degil, Answerer atlaniyor (--no-answer ile sessizce atlayabilirsin).")
             elif not ranked_evidence:
@@ -357,12 +381,14 @@ if __name__ == "__main__":
             print(f"  risk_level: {answer.risk_level}")
             print(f"  used_sources: {answer.used_sources}")
             print(f"  assumptions: {answer.assumptions}")
+            if insufficient_evidence:
+                print("  (Yeterli kanit bulunamadi. --force-answer ile zayif kanitla da olsa bir cevap denenebilir.)")
             if citation_issues:
                 print("  UYARI (kalite kurali ihlali - docs/01_architecture_v0.1.md #3):")
                 for issue in citation_issues:
                     print(f"    - {issue}")
 
-            if not args.no_memory:
+            if not args.no_memory and not insufficient_evidence:
                 summary_prompt_template = conv.load_prompt_template(SUMMARY_PROMPT_FILE)
                 conv.record_turn(
                     HISTORY_FILE, SUMMARY_FILE,
@@ -450,14 +476,14 @@ if __name__ == "__main__":
             sys.exit(1)
 
         linker_prompt_file = os.path.join(BASE_DIR, "docs", "prompts", "07_entity_linker_prompt.md")
-        linker_prompt = step5b_entity_linker.load_prompt_template(linker_prompt_file)
-        linker_model = os.environ.get("GEMINI_EXTRACTOR_MODEL", step5b_entity_linker.DEFAULT_MODEL)
+        linker_prompt = entity_linker.load_prompt_template(linker_prompt_file)
+        linker_model = os.environ.get("GEMINI_EXTRACTOR_MODEL", entity_linker.DEFAULT_MODEL)
 
-        phrases = step5b_entity_linker.call_entity_linker(genai_client, linker_model, linker_prompt, effective_question)
+        phrases = entity_linker.call_entity_linker(genai_client, linker_model, linker_prompt, effective_question)
 
         failures = []
         if cause_id is None:
-            resolved_id, score, candidates = step5b_entity_linker.resolve_phrase_to_entity(
+            resolved_id, score, candidates = entity_linker.resolve_phrase_to_entity(
                 phrases.cause_phrase, qdrant_client, embedding_model
             )
             if resolved_id is None:
@@ -467,7 +493,7 @@ if __name__ == "__main__":
                 print(f"\nOtomatik eslestirme: '{phrases.cause_phrase}' -> {cause_id} (skor={score:.2f})")
 
         if target_id is None:
-            resolved_id, score, candidates = step5b_entity_linker.resolve_phrase_to_entity(
+            resolved_id, score, candidates = entity_linker.resolve_phrase_to_entity(
                 phrases.target_phrase, qdrant_client, embedding_model
             )
             if resolved_id is None:

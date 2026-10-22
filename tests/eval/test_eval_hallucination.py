@@ -54,3 +54,50 @@ class TestAggregateHallucinationResults:
     def test_empty_results_returns_zero_without_error(self):
         agg = harness.aggregate_hallucination_results([])
         assert agg == {"groundedness_rate": 0.0}
+
+
+class TestAggregateRefusalResults:
+    def test_all_correctly_refused_gives_full_accuracy(self):
+        results = [{"question": "q1", "correctly_refused": True}, {"question": "q2", "correctly_refused": True}]
+        assert harness.aggregate_refusal_results(results) == {"refusal_accuracy": 1.0}
+
+    def test_partial_refusal_gives_fractional_accuracy(self):
+        results = [{"question": "q1", "correctly_refused": True}, {"question": "q2", "correctly_refused": False}]
+        assert harness.aggregate_refusal_results(results) == {"refusal_accuracy": 0.5}
+
+    def test_empty_results_gives_zero_not_division_error(self):
+        assert harness.aggregate_refusal_results([]) == {"refusal_accuracy": 0.0}
+
+
+class TestEvaluateRefusalQuestion:
+    def test_low_score_evidence_is_correctly_refused(self):
+        class FakeCrossEncoder:
+            def predict(self, pairs):
+                return [-5.0 for _ in pairs]
+
+        chunks_by_id = {"a": {"chunk_id": "a", "text": "alakasiz metin", "source_id": "x", "location": "l", "quote": "q"}}
+
+        def fake_vector_seed_search(*args, **kwargs):
+            return ["a"]
+
+        result = harness.evaluate_refusal_question(
+            "Fransa'nin baskenti neresidir?", None, None, FakeCrossEncoder(), chunks_by_id,
+            vector_seed_search_fn=fake_vector_seed_search, threshold=0.0,
+        )
+        assert result["correctly_refused"] is True
+
+    def test_high_score_evidence_is_not_refused(self):
+        class FakeCrossEncoder:
+            def predict(self, pairs):
+                return [5.0 for _ in pairs]
+
+        chunks_by_id = {"a": {"chunk_id": "a", "text": "alakali metin", "source_id": "x", "location": "l", "quote": "q"}}
+
+        def fake_vector_seed_search(*args, **kwargs):
+            return ["a"]
+
+        result = harness.evaluate_refusal_question(
+            "PostgreSQL nedir?", None, None, FakeCrossEncoder(), chunks_by_id,
+            vector_seed_search_fn=fake_vector_seed_search, threshold=0.0,
+        )
+        assert result["correctly_refused"] is False

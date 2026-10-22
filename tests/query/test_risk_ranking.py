@@ -1,4 +1,4 @@
-from backend.query import step5c_risk_ranking as risk_ranking
+from backend.query import risk_ranking
 
 
 class TestFormatRiskSummary:

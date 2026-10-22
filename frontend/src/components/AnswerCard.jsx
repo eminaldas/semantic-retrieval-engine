@@ -7,7 +7,7 @@ function formatDuration(durationMs) {
   return `${(durationMs / 1000).toFixed(1)}sn`;
 }
 
-export default function AnswerCard({ turn, selectedSid, onSelectEvidence }) {
+export default function AnswerCard({ turn, selectedSid, onSelectEvidence, onForceAnswer }) {
   const { question, response, error, pending, durationMs } = turn;
 
   if (pending) {
@@ -38,7 +38,7 @@ export default function AnswerCard({ turn, selectedSid, onSelectEvidence }) {
     );
   }
 
-  const { answer, evidence, answer_error } = response;
+  const { answer, evidence, answer_error, insufficient_evidence } = response;
   const evidenceBySid = new Map((evidence || []).map((e) => [e.sid, e]));
   const duration = formatDuration(durationMs);
 
@@ -50,7 +50,18 @@ export default function AnswerCard({ turn, selectedSid, onSelectEvidence }) {
         </p>
       </div>
       <div className="flex justify-start">
-        {answer ? (
+        {insufficient_evidence ? (
+          <div className="max-w-[88%] bg-surface-2 rounded-xl px-3.5 py-2.5">
+            <p className="m-0 leading-[1.65] text-[13.5px] text-text-muted italic">{answer.answer_text}</p>
+            <button
+              type="button"
+              onClick={() => onForceAnswer(turn)}
+              className="mt-2 text-[12px] font-semibold text-accent hover:underline"
+            >
+              Yine de dene
+            </button>
+          </div>
+        ) : answer ? (
           <div className="max-w-[88%]">
             <div className="flex items-center gap-2 mb-1.5">
               <span className="font-mono font-bold text-[10px] tracking-wide uppercase text-text bg-surface-2 border border-accent rounded px-1.5 py-0.5">

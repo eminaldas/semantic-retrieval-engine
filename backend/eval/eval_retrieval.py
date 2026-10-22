@@ -1,5 +1,5 @@
 """Retrieval hit-rate degerlendirme araci - golden bir soru setiyle
-step5_query_engine.py'nin graf+vektor+rerank cikisini olcer.
+query_engine.py'nin graf+vektor+rerank cikisini olcer.
 docs/superpowers/specs/2026-07-24-evaluation-harness-design.md'deki tasarima gore.
 
 Not: bu bir 'stepN_' pipeline modulu degil - istendiginde calistirilan
@@ -65,7 +65,7 @@ from neo4j import GraphDatabase
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
-from backend.query import step5_query_engine as qe
+from backend.query import query_engine as qe
 from backend.shared.paths import PROJECT_ROOT
 
 

@@ -1,5 +1,5 @@
 """Extraction precision/recall degerlendirme araci - bagimsiz elle etiketlenmis bir
-gold-set ile step2_extractor.py'nin gercek Gemini cikisini olcer.
+gold-set ile extractor.py'nin gercek Gemini cikisini olcer.
 docs/superpowers/specs/2026-07-24-extraction-eval-design.md'deki tasarima gore.
 
 Not: bu bir 'stepN_' pipeline modulu degil - istendiginde calistirilan bir
@@ -7,7 +7,7 @@ kalite-olcum araci (eval_retrieval.py/dashboard.py gibi ayri duruyor).
 Retrieval fazinin aksine gercek Gemini API cagrisi yapar (GEMINI_API_KEY gerekir)."""
 
 import json
-from backend.pipeline import step3_graph_writer as gw
+from backend.pipeline import graph_writer as gw
 
 
 def load_golden_set(path):
@@ -96,8 +96,8 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from google import genai
 
-from backend.pipeline import step2_extractor as extractor  # extract_chunk, load_prompt_template, DEFAULT_MODEL reuse
-from backend.query import step5_query_engine as qe  # load_chunks_by_id reuse - chunk text lookup by chunk_id
+from backend.pipeline import extractor  # extract_chunk, load_prompt_template, DEFAULT_MODEL reuse
+from backend.query import query_engine as qe  # load_chunks_by_id reuse - chunk text lookup by chunk_id
 from backend.shared.paths import PROJECT_ROOT
 
 

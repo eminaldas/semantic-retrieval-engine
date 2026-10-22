@@ -10,7 +10,7 @@ from sentence_transformers import SentenceTransformer
 from backend.shared.paths import PROJECT_ROOT
 
 COLLECTION_NAME = "chunks"
-EMBEDDING_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"  # step1_chunker.py ile ayni model olmali
+EMBEDDING_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"  # chunker.py ile ayni model olmali
 
 # chunk_id -> Qdrant point id turetmek icin sabit namespace (uuid5, deterministik).
 # Qdrant point id'leri int/UUID olmak zorunda; string chunk_id dogrudan kullanilamiyor.
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     qdrant_url = os.environ.get("QDRANT_URL", "http://localhost:6333")
 
     if not os.path.exists(CHUNKS_FILE):
-        print(f"HATA: {CHUNKS_FILE} bulunamadi. Once step1_chunker.py calistirilmali.")
+        print(f"HATA: {CHUNKS_FILE} bulunamadi. Once chunker.py calistirilmali.")
         sys.exit(1)
 
     print("Model yukleniyor ve Qdrant'a baglaniliyor...")

@@ -1,6 +1,6 @@
 """Gemini API cagrilarini saran ortak retry/backoff + proaktif hiz sinirlama.
-step2_extractor.py, step5b_entity_linker.py, step5_query_engine.py,
-step5d_conversation_memory.py, step6_self_correction.py, eval_hallucination.py
+extractor.py, entity_linker.py, query_engine.py,
+conversation_memory.py, self_correction.py, eval_hallucination.py
 tarafindan kullanilir. docs/superpowers/specs/2026-08-02-gemini-rate-limit-design.md."""
 
 import random
@@ -47,7 +47,7 @@ def call_with_retry(fn, min_interval_seconds=0.0, pacing_key="default"):
 
     min_interval_seconds > 0 ise, ayni pacing_key ile yapilan bir onceki cagridan
     bu yana en az bu kadar sure gecmesini bekler (proaktif hiz sinirlama - sadece
-    step2_extractor.py'nin toplu dongusu kullanir; diger tekil-cagri siteleri
+    extractor.py'nin toplu dongusu kullanir; diger tekil-cagri siteleri
     varsayilan 0.0 ile hicbir gecikme eklemez).
 
     Son denemeden sonra hala basarisizsa RuntimeError firlatir (mevcut

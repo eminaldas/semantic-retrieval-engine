@@ -1,6 +1,6 @@
 # Entity Linker Prompt v0.1 (Entity Linking module)
 
-Bu, kullanıcının doğal dilde sorduğu bir soruyu (`--question`) A (cause) ve C (target) varlıklarına otomatik olarak çözmek için kullanılan LLM promptudur (`step5b_entity_linker.py::call_entity_linker`). `{QUESTION}` yerine kullanıcının soru metni basılır. Prompt İngilizce'dir (LLM talimatları için tutarlılık amacıyla), kod ve dokümantasyon Türkçe kalır.
+Bu, kullanıcının doğal dilde sorduğu bir soruyu (`--question`) A (cause) ve C (target) varlıklarına otomatik olarak çözmek için kullanılan LLM promptudur (`entity_linker.py::call_entity_linker`). `{QUESTION}` yerine kullanıcının soru metni basılır. Prompt İngilizce'dir (LLM talimatları için tutarlılık amacıyla), kod ve dokümantasyon Türkçe kalır.
 
 ---
 
