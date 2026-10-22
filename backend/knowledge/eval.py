@@ -118,6 +118,7 @@ def main():
         chars.append(len(search.format_results(results)))
         score = score_record(record, results)
         score["top"] = [f"{r['path']} {r['rerank_score']:.2f}" for r in results[:3]]
+        score["top1_score"] = results[0]["rerank_score"] if results else None
         scores.append(score)
         mark = ("OK " if score["rank"] and score["rank"] <= 3 else "-- ") if score["answerable"] else \
                ("OK " if score["abstained"] else "-- ")

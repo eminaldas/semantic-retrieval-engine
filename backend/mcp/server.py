@@ -27,7 +27,12 @@ _PROJECT = {"type": "string", "description": "Proje adi (orn. nehaber). Tek proj
 TOOLS = [
     {
         "name": "search",
-        "description": "Proje belgelerinde hibrit (anlamsal + anahtar kelime) arama yapar, rerank sonrasi en ilgili parcalari kaynak ve konumla dondurur.",
+        "description": (
+            "Proje belgelerinde hibrit (anlamsal + anahtar kelime) arama yapar, rerank sonrasi en ilgili parcalari "
+            "kaynak ve konumla dondurur. Proje hakkindaki cevabi yalnizca donen parcalara dayandir ve kullandigin "
+            "belgenin yolunu belirt. 'zayif eslesme' isaretli parcalari kanit sayma; sonuc UYARI ile basliyorsa "
+            "kullaniciya belgelerde bulunamadigini soyle, kendi genel bilgini proje bilgisi gibi sunma."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {

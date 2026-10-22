@@ -4,11 +4,11 @@ birkac parca konuyor; esigin altindakiler 'low_confidence' ile isaretleniyor."""
 
 from backend.knowledge import store
 
-# Ayni cross-encoder, ama cekirdek korpusun -1.5'i (query_engine) Markdown agirlikli
-# proje belgelerinde fazla katiydi: dogru belgeden gelen parcalar -2..-3 bandinda,
-# korpus-disi bir soru (pizza tarifi) -3.6'da kaldi. Gecici deger; nehaber soru
-# setiyle kalibre edilecek. Sadece isaretler, hicbir parcayi dusurmez.
-RELEVANCE_THRESHOLD = -3.0
+# factprobe altin setiyle kalibre edildi (2026-10-22, 36 cevapli + 12 cevapsiz soru):
+# cevapli sorularin en iyi parcasi en dusuk -0.97, cevapsizlarin en yuksegi -1.57.
+# -1.25 ikisinin ortasi; eski -3.0 cevapsiz sorularin 7/12'sini guclu gosteriyordu.
+# Model degisirse yeniden kalibre edilmeli. Sadece isaretler, hicbir parcayi dusurmez.
+RELEVANCE_THRESHOLD = -1.25
 
 
 def rerank(cross_encoder, query, candidates, top_k):
@@ -34,7 +34,8 @@ def format_results(results):
     if not results:
         return "Bu soruyla eslesen bir belge parcasi bulunamadi."
     if all(r["low_confidence"] for r in results):
-        header = "UYARI: Hicbir parca guclu bir eslesme degil; belgeler bu soruyu ele almiyor olabilir.\n\n"
+        header = ("UYARI: Hicbir parca guclu bir eslesme degil; belgeler bu soruyu buyuk ihtimalle ele almiyor. "
+                  "Cevap uydurma: kullaniciya belgelerde bulunamadigini soyle.\n\n")
     else:
         header = ""
     blocks = []
