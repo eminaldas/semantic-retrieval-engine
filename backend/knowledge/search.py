@@ -11,9 +11,9 @@ import re
 from backend.knowledge import store
 
 # bge-reranker-v2-m3 skoru 0-1 arasi. factprobe altin setinde (2026-10-22, 42 cevapli + 12
-# alakasiz soru) alakasizlarin en iyi parcasi 11/12'de <= 0.021, cevaplilarinki >= 0.077.
-# 0.05 bu araliktadir: yanlis uyari 0, kacan alakasiz 1 (React Native sorusu, 0.115).
-# Model degisirse yeniden kalibre edilmeli. Sadece isaretler, hicbir parcayi dusurmez.
+# alakasiz soru, Gemini baglam cumleleriyle) alakasizlarin en iyi parcasi <= 0.041, cevaplilarinki
+# >= 0.069: 0.05 ikisini ayiriyor (yanlis uyari 0, kacan alakasiz 0). Aralik dar; model ya da
+# baglam uretimi degisirse yeniden kalibre edilmeli. Sadece isaretler, hicbir parcayi dusurmez.
 RELEVANCE_THRESHOLD = 0.05
 WINDOW_CHARS = 700  # sonuc basina pencere; eslesen parca bundan uzunsa tek basina gider
 WINDOW_RADIUS = 3  # her yone en fazla kac komsu parca
@@ -23,10 +23,18 @@ SUPERSEDED_FACTOR = 0.5  # yerine yeni not yazilmis notun skoru bu katsayiyla ca
 _LINES_RE = re.compile(r"(\d+)\s*-\s*(\d+)")
 
 
+def rerank_text(candidate):
+    """Cross-encoder'in gordugu metin: varsa LLM baglam cumlesi + parca. factprobe altin setinde
+    (2026-10-22) baglamla rerank alakasiz sorulari tam ayirdi (abstain 0.92 -> 1.00), hit@5 0.93 -> 0.95."""
+    if candidate.get("chunk_context"):
+        return f"{candidate['chunk_context']}\n{candidate['text']}"
+    return candidate["text"]
+
+
 def rerank(cross_encoder, query, candidates, top_k):
     if not candidates:
         return []
-    scores = cross_encoder.predict([(query, c["text"]) for c in candidates])
+    scores = cross_encoder.predict([(query, rerank_text(c)) for c in candidates])
     ranked = sorted(zip(candidates, scores), key=lambda pair: pair[1], reverse=True)[:top_k]
     return [dict(c, rerank_score=float(s)) for c, s in ranked]
 

@@ -52,7 +52,7 @@ def load_reranker():
 class Runtime:
     def __init__(self):
         self._lock = threading.Lock()
-        self._client = self._embedder = self._reranker = self._chunker_model = None
+        self._client = self._embedder = self._reranker = self._chunker_model = self._contextualizer = None
 
     def client(self):
         with self._lock:
@@ -83,3 +83,12 @@ class Runtime:
             if self._reranker is None:
                 self._reranker = load_reranker()
             return self._reranker
+
+    def contextualizer(self):
+        """Gemini baglam ureticisi; sadece "contextual": true olan projelerde cagrilir."""
+        with self._lock:
+            if self._contextualizer is None:
+                from backend.knowledge.contextual import GeminiContextualizer
+
+                self._contextualizer = GeminiContextualizer()
+            return self._contextualizer

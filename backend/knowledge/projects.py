@@ -204,8 +204,9 @@ def doc_type_for(relpath):
     return "note" if relpath.startswith(NOTES_PREFIX) else "doc"
 
 
-def build_chunk_records(project, relpath, raw_text, chunks, mtime=None, indexed_at=None):
+def build_chunk_records(project, relpath, raw_text, chunks, mtime=None, indexed_at=None, contexts=None):
     """chunks: chunker.chunk_document ciktisi [(text, location), ...].
+    contexts: parca basina LLM baglam cumlesi (contextual.py) ya da None.
     Doner: payload'a ve embedding'e hazir kayitlar."""
     source_id = source_id_for(project, relpath)
     modified = datetime.fromtimestamp(mtime, timezone.utc).isoformat() if mtime else None
@@ -216,6 +217,8 @@ def build_chunk_records(project, relpath, raw_text, chunks, mtime=None, indexed_
     for index, (text, location) in enumerate(chunks):
         line = start_line_of(location)
         headings = heading_path_at(raw_text, line) if line else []
+        sentence = contexts[index] if contexts and index < len(contexts) else ""
+        prefix = context_prefix(project, relpath, headings) + (f"\nBaglam: {sentence}" if sentence else "")
         records.append({
             "chunk_id": f"{source_id}#{index + 1:04d}",
             "project": project,
@@ -224,7 +227,8 @@ def build_chunk_records(project, relpath, raw_text, chunks, mtime=None, indexed_
             "location": location,
             "section": " > ".join(headings),
             "text": text,
-            "embed_text": context_prefix(project, relpath, headings) + "\n" + text,
+            "embed_text": prefix + "\n" + text,
+            "chunk_context": sentence or None,
             "doc_type": doc_type_for(relpath),
             "modified_at": modified,
             "indexed_at": indexed,

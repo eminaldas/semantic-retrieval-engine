@@ -82,6 +82,9 @@ class FakeRuntime:
     def chunker_model(self):
         return None
 
+    def contextualizer(self):
+        return None
+
 
 def _service(tmp_path, monkeypatch, results=None):
     root = tmp_path / "repo"

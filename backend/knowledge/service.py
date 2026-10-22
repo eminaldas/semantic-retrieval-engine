@@ -221,7 +221,8 @@ class KnowledgeService:
         with self.sync_lock:
             report = sync.sync_project(project, self.runtime.client(), self.runtime.embedder(), config=self._config(),
                                        full=full, only=only, log=lambda *_: None,
-                                       chunk_model=self.runtime.chunker_model(), notes_dir=self.notes_dir)
+                                       chunk_model=self.runtime.chunker_model(), notes_dir=self.notes_dir,
+                                       contextualizer=self.runtime.contextualizer())
         summary = f"{len(report['indexed'])} dosya indekslendi, {len(report['removed'])} kaldirildi"
         self.last_sync[project] = (datetime.now(timezone.utc).timestamp(), summary)
         return report

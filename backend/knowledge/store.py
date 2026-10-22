@@ -15,7 +15,7 @@ DENSE = "dense"
 SPARSE = "bm25"
 POINT_NAMESPACE = uuid.UUID("5d0c7f3e-2b8a-4c61-9e4f-8a1b2c3d4e5f")
 PAYLOAD_FIELDS = ("chunk_id", "project", "source_id", "path", "location", "section", "text", "doc_type", "modified_at",
-                  "indexed_at", "dirs", "superseded_by")
+                  "indexed_at", "dirs", "superseded_by", "chunk_context")
 PAYLOAD_INDEXES = {
     "project": models.PayloadSchemaType.KEYWORD,
     "source_id": models.PayloadSchemaType.KEYWORD,
