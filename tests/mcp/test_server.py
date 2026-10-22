@@ -43,7 +43,8 @@ class TestHandshake:
 class TestTools:
     def test_tools_list_names(self):
         names = [t["name"] for t in _call(srv.MCPServer(FakeService()), "tools/list")["result"]["tools"]]
-        assert names == ["search", "list_documents", "get_document", "add_note", "sync_project", "list_projects"]
+        assert names == ["search", "overview", "list_documents", "get_document", "add_note", "add_document",
+                         "index_status", "sync_project", "list_projects"]
 
     def test_call_dispatches_to_service(self):
         service = FakeService()

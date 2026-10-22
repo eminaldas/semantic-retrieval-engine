@@ -17,6 +17,9 @@ CONFIG_FILE = os.path.join(PROJECT_ROOT, "knowledge_projects.json")
 NOTES_DIR = os.path.join(PROJECT_ROOT, "knowledge_notes")
 MANIFEST_DIR = os.path.join(PROJECT_ROOT, "artifacts", "knowledge")
 NOTES_PREFIX = "notes/"
+DOCUMENTS_SUBDIR = "belgeler/"  # add_document ile yazilan tam belgeler; not degil, belge sayilir
+SUPERSEDED_MARKER = "_Yerini alan not: {path}_"
+SUPERSEDED_RE = re.compile(r"^_Yerini alan not: (\S+?)_\s*$", re.MULTILINE)
 DEFAULT_INCLUDE = ["**/*.md"]
 DEFAULT_EXCLUDE = ["node_modules/**", ".git/**", ".expo/**", "**/node_modules/**"]
 SUPPORTED_EXTENSIONS = (".md", ".txt", ".pdf", ".docx", ".html", ".htm")
@@ -182,11 +185,33 @@ def split_oversized(chunks, max_chars=MAX_CHUNK_CHARS):
     return result
 
 
-def build_chunk_records(project, relpath, raw_text, chunks, mtime=None):
+def dir_prefixes(relpath):
+    """'graf/alt/x.md' -> ['graf/', 'graf/alt/']: path_prefix filtresi Qdrant'ta
+    tam esleme (keyword) ile calissin diye her ust klasor ayri deger olarak saklanir."""
+    parts = relpath.split("/")[:-1]
+    return ["/".join(parts[:i]) + "/" for i in range(1, len(parts) + 1)]
+
+
+def superseded_by(raw_text):
+    """Yerine yeni not yazilmis bir notun isaret satirindaki yeni notun yolu; yoksa None."""
+    match = SUPERSEDED_RE.search(raw_text)
+    return match.group(1) if match else None
+
+
+def doc_type_for(relpath):
+    if relpath.startswith(NOTES_PREFIX + DOCUMENTS_SUBDIR):
+        return "doc"
+    return "note" if relpath.startswith(NOTES_PREFIX) else "doc"
+
+
+def build_chunk_records(project, relpath, raw_text, chunks, mtime=None, indexed_at=None):
     """chunks: chunker.chunk_document ciktisi [(text, location), ...].
     Doner: payload'a ve embedding'e hazir kayitlar."""
     source_id = source_id_for(project, relpath)
     modified = datetime.fromtimestamp(mtime, timezone.utc).isoformat() if mtime else None
+    indexed = indexed_at or datetime.now(timezone.utc).isoformat()
+    replaced_by = superseded_by(raw_text)
+    dirs = dir_prefixes(relpath)
     records = []
     for index, (text, location) in enumerate(chunks):
         line = start_line_of(location)
@@ -200,10 +225,26 @@ def build_chunk_records(project, relpath, raw_text, chunks, mtime=None):
             "section": " > ".join(headings),
             "text": text,
             "embed_text": context_prefix(project, relpath, headings) + "\n" + text,
-            "doc_type": "note" if relpath.startswith(NOTES_PREFIX) else "doc",
+            "doc_type": doc_type_for(relpath),
             "modified_at": modified,
+            "indexed_at": indexed,
+            "dirs": dirs,
+            "superseded_by": replaced_by,
         })
     return records
+
+
+def source_file(project, settings, relpath, notes_dir=NOTES_DIR):
+    """Indeksteki goreli yolun diskteki dosyasi (notlar motorun not klasorunde)."""
+    if relpath.startswith(NOTES_PREFIX):
+        return os.path.join(notes_dir, project, *relpath[len(NOTES_PREFIX):].split("/"))
+    return os.path.join(settings["root"], *relpath.split("/"))
+
+
+def document_relpath(name):
+    """add_document adi -> 'notes/belgeler/<slug>.md'. Klasor ve '..' kabul edilmez."""
+    stem = name[:-3] if name.lower().endswith(".md") else name
+    return f"{NOTES_PREFIX}{DOCUMENTS_SUBDIR}{slugify_title(stem)}.md"
 
 
 def slugify_title(title):
@@ -217,6 +258,7 @@ def note_filename(title, now=None):
     return f"{now.strftime('%Y-%m-%d-%H%M')}-{slugify_title(title)}.md"
 
 
-def render_note(project, title, body, now=None):
+def render_note(project, title, body, now=None, supersedes=None):
     now = now or datetime.now(timezone.utc)
-    return f"# {title}\n\n_Proje: {project} · {now.strftime('%Y-%m-%d %H:%M')} UTC_\n\n{body.strip()}\n"
+    replaces = f" · yerine gectigi not: {supersedes}" if supersedes else ""
+    return f"# {title}\n\n_Proje: {project} · {now.strftime('%Y-%m-%d %H:%M')} UTC{replaces}_\n\n{body.strip()}\n"

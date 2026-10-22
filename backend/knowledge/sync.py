@@ -6,6 +6,7 @@ Kullanim: python -m backend.knowledge.sync <proje> [--full]"""
 
 import os
 import sys
+from datetime import datetime, timezone
 
 from backend.knowledge import projects, store
 
@@ -23,7 +24,8 @@ def collect_files(project, settings, notes_dir=projects.NOTES_DIR):
     return files
 
 
-def sync_project(project, client, embedding_model, config=None, full=False, only=None, log=print, chunk_model=None):
+def sync_project(project, client, embedding_model, config=None, full=False, only=None, log=print, chunk_model=None,
+                 notes_dir=projects.NOTES_DIR):
     """only: verilirse sadece bu relpath'ler kontrol edilir (orn. yeni eklenen bir not).
     chunk_model: parca sinirlarini belirleyen model (verilmezse embedding_model).
     Doner: {'indexed': [...], 'removed': [...], 'chunks': int}."""
@@ -32,7 +34,7 @@ def sync_project(project, client, embedding_model, config=None, full=False, only
     settings = projects.project_settings(config if config is not None else projects.load_config(), project)
     store.ensure_collection(client, embedding_model.get_embedding_dimension())
 
-    files = collect_files(project, settings)
+    files = collect_files(project, settings, notes_dir)
     if only is not None:
         files = {rel: path for rel, path in files.items() if rel in set(only)}
     old_manifest = projects.load_manifest(project)
@@ -48,11 +50,13 @@ def sync_project(project, client, embedding_model, config=None, full=False, only
 
     manifest = dict(old_manifest)
     total_chunks = 0
+    indexed_at = datetime.now(timezone.utc).isoformat()
     for rel in changed:
         path = files[rel]
         raw_text = chunker.load_document(path)
         chunks = projects.split_oversized(chunker.chunk_document(path, chunk_model or embedding_model)) if raw_text.strip() else []
-        records = projects.build_chunk_records(project, rel, raw_text, chunks, mtime=os.path.getmtime(path))
+        records = projects.build_chunk_records(project, rel, raw_text, chunks, mtime=os.path.getmtime(path),
+                                               indexed_at=indexed_at)
         store.delete_source(client, projects.source_id_for(project, rel))
         if records:
             vectors = embedding_model.encode([r["embed_text"] for r in records])

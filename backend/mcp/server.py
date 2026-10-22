@@ -16,9 +16,10 @@ SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"]
 
 INSTRUCTIONS = (
     "Proje belgeleri (spec, plan, rapor, karar notlari) icin hafiza katmani. "
-    "Uzun belgeleri okumadan once 'search' ile ilgili parcalari bulun; sonuclar kaynak "
-    "ve satir araligiyla gelir, cevapta bunlari kaynak olarak gosterin. Tum belge "
-    "gerekirse 'get_document'. Bir is ya da karar bittiginde 'add_note' ile ozetini "
+    "Projeyi tanimiyorsaniz once 'overview'. Uzun belgeleri okumadan once 'search' ile ilgili "
+    "parcalari bulun; sonuclar kaynak, satir araligi ve degisiklik tarihiyle gelir, cevapta "
+    "bunlari kaynak olarak gosterin ve ayni konuda celisen sonuclarda yeni tarihliyi esas alin. "
+    "Tum belge gerekirse 'get_document'. Bir is ya da karar bittiginde 'add_note' ile ozetini "
     "kaydedin ki sonraki konusmalar hatirlasin."
 )
 
@@ -31,18 +32,30 @@ TOOLS = [
             "Proje belgelerinde hibrit (anlamsal + anahtar kelime) arama yapar, rerank sonrasi en ilgili parcalari "
             "kaynak ve konumla dondurur. Proje hakkindaki cevabi yalnizca donen parcalara dayandir ve kullandigin "
             "belgenin yolunu belirt. 'zayif eslesme' isaretli parcalari kanit sayma; sonuc UYARI ile basliyorsa "
-            "kullaniciya belgelerde bulunamadigini soyle, kendi genel bilgini proje bilgisi gibi sunma."
+            "kullaniciya belgelerde bulunamadigini soyle, kendi genel bilgini proje bilgisi gibi sunma. "
+            "'guncel degil' isaretli sonucta dosya indeksten sonra degismistir: bunu kullaniciya soyle ya da "
+            "sync_project calistirip yeniden ara. 'eski not' isaretli notun yerini yenisi almistir."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Dogal dilde soru ya da anahtar kelimeler"},
+                "queries": {"type": "array", "items": {"type": "string"}, "maxItems": 4,
+                            "description": "Birbirinden bagimsiz 2-4 soruyu tek cagrida aramak icin; sonuclar soru basina ayri basliklarda"},
                 "project": _PROJECT,
                 "doc_type": {"type": "string", "enum": ["doc", "note"], "description": "Sadece belgeler ya da sadece notlar"},
+                "path_prefix": {"type": "string", "description": "Sadece bu klasor (orn. 'graf/') ya da dosya (orn. 'KARARLAR_OZET.md')"},
+                "modified_after": {"type": "string", "description": "YYYY-AA-GG; bu tarihte ya da sonra degisen belgeler"},
+                "modified_before": {"type": "string", "description": "YYYY-AA-GG; bu tarihte ya da once degisen belgeler"},
                 "top_k": {"type": "integer", "minimum": 1, "maximum": 15, "default": 5},
             },
-            "required": ["query"],
         },
+    },
+    {
+        "name": "overview",
+        "description": ("Projenin haritasi: klasorler, son degisen belgeler, son notlar. Projeyi ilk kez "
+                        "soruyorsan ya da hangi belgenin nerede oldugunu bilmiyorsan search'ten once cagir."),
+        "inputSchema": {"type": "object", "properties": {"project": _PROJECT}},
     },
     {
         "name": "list_documents",
@@ -64,16 +77,39 @@ TOOLS = [
     },
     {
         "name": "add_note",
-        "description": "Bir karar, ilerleme ya da konusma ozetini not olarak kaydeder ve hemen indeksler.",
+        "description": ("Bir karar, ilerleme ya da konusma ozetini not olarak kaydeder ve hemen indeksler. "
+                        "Yeni not eski bir notun yerine geciyorsa supersedes ile eskisini ver; eski not aramada geri plana duser."),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "title": {"type": "string"},
                 "body": {"type": "string", "description": "Markdown icerik"},
                 "project": _PROJECT,
+                "supersedes": {"type": "string", "description": "Yerine gecilen notun yolu (orn. notes/2026-10-20-1200-esik.md)"},
             },
             "required": ["title", "body"],
         },
+    },
+    {
+        "name": "add_document",
+        "description": ("Tam bir belgeyi (plan, rapor, ozet) motorun belge klasorune yazar ve indeksler; proje reposuna "
+                        "dokunmaz. Kisa karar/ilerleme kaydi icin add_note daha uygun."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Belge adi; dosya adi bundan uretilir (notes/belgeler/<ad>.md)"},
+                "content": {"type": "string", "description": "Markdown icerik"},
+                "project": _PROJECT,
+                "overwrite": {"type": "boolean", "default": False, "description": "Ayni adli belge varsa guncelle"},
+            },
+            "required": ["name", "content"],
+        },
+    },
+    {
+        "name": "index_status",
+        "description": ("Indeksin guncel olup olmadigini gosterir: diskte yeni, degismis ya da silinmis dosyalar, "
+                        "son senkron ve parca sayisi. Sonuclarda 'guncel degil' goruyorsan bak."),
+        "inputSchema": {"type": "object", "properties": {"project": _PROJECT}},
     },
     {
         "name": "sync_project",

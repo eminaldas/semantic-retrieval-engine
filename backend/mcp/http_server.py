@@ -272,18 +272,24 @@ def main():
     try:
         oauth = OAuthProvider(token, store_path=os.path.join(PROJECT_ROOT, "artifacts", "oauth", "store.json"))
         runtime = Runtime()
-        httpd = build_server(MCPServer(KnowledgeService(runtime)), token, port=args.port,
+        service = KnowledgeService(runtime)
+        httpd = build_server(MCPServer(service), token, port=args.port,
                              oauth=oauth, public_url=os.environ.get("MCP_PUBLIC_URL"))
     except ValueError as exc:
         print(f"HATA: {exc}", file=sys.stderr)
         sys.exit(1)
     print(f"MCP HTTP sunucusu: http://127.0.0.1:{args.port}{MCP_PATH}", file=sys.stderr, flush=True)
-    threading.Thread(target=_warm_up, args=(runtime,), daemon=True).start()
+    threading.Thread(target=_warm_up, args=(runtime, service), daemon=True).start()
     httpd.serve_forever()
 
 
-def _warm_up(runtime):
-    """Modelleri acilista yukler: yoksa yeniden baslatma sonrasi ilk arama ~30 sn bekliyor."""
+def _warm_up(runtime, service=None):
+    """Modelleri acilista yukler (yoksa yeniden baslatma sonrasi ilk arama ~30 sn bekliyor),
+    sonra klasor izleyicisini baslatir. RAG_WATCH=0 izleyiciyi kapatir."""
+    import os
+
+    from backend.knowledge.watcher import ProjectWatcher
+
     try:
         runtime.client()
         runtime.embedder().encode("isinma")
@@ -291,6 +297,9 @@ def _warm_up(runtime):
         print("Modeller hazir.", file=sys.stderr, flush=True)
     except Exception as exc:  # isinma basarisizsa ilk arama yine tembel yukler
         print(f"Isinma basarisiz: {exc}", file=sys.stderr, flush=True)
+    if service is not None and os.environ.get("RAG_WATCH", "1") != "0":
+        ProjectWatcher(service).start()
+        print("Klasor izleyici calisiyor.", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
