@@ -75,7 +75,7 @@ class KnowledgeService:
         if not project:
             raise ValueError("Birden fazla proje var; project parametresini verin.")
         report = sync.sync_project(project, self.runtime.client(), self.runtime.embedder(), config=self._config(),
-                                   full=full, log=lambda *_: None)
+                                   full=full, log=lambda *_: None, chunk_model=self.runtime.chunker_model())
         return (f"{project}: {len(report['indexed'])} dosya indekslendi ({report['chunks']} parca), "
                 f"{len(report['removed'])} dosya kaldirildi.")
 
@@ -92,5 +92,5 @@ class KnowledgeService:
             f.write(projects.render_note(project, title, body))
         rel = projects.NOTES_PREFIX + filename
         sync.sync_project(project, self.runtime.client(), self.runtime.embedder(), config=self._config(),
-                          only=[rel], log=lambda *_: None)
+                          only=[rel], log=lambda *_: None, chunk_model=self.runtime.chunker_model())
         return f"Not kaydedildi ve indekslendi: {rel}"

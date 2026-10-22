@@ -23,6 +23,12 @@ def point_id(chunk_id):
 
 def ensure_collection(client, vector_size):
     if client.collection_exists(COLLECTION_NAME):
+        existing = client.get_collection(COLLECTION_NAME).config.params.vectors[DENSE].size
+        if existing != vector_size:
+            raise ValueError(
+                f"'{COLLECTION_NAME}' {existing} boyutlu vektorlerle kurulmus, model {vector_size} uretiyor. "
+                f"Embedding modeli degismis: koleksiyonu silip tum projeleri --full ile yeniden indeksleyin."
+            )
         return
     client.create_collection(
         collection_name=COLLECTION_NAME,

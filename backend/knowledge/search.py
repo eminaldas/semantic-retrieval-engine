@@ -10,11 +10,11 @@ import re
 
 from backend.knowledge import store
 
-# factprobe altin setiyle kalibre edildi (2026-10-22, 36 cevapli + 12 cevapsiz soru):
-# cevapli sorularin en iyi parcasi en dusuk -0.97, cevapsizlarin en yuksegi -1.57.
-# -1.25 ikisinin ortasi; eski -3.0 cevapsiz sorularin 7/12'sini guclu gosteriyordu.
+# bge-reranker-v2-m3 skoru 0-1 arasi. factprobe altin setinde (2026-10-22, 42 cevapli + 12
+# alakasiz soru) alakasizlarin en iyi parcasi 11/12'de <= 0.021, cevaplilarinki >= 0.077.
+# 0.05 bu araliktadir: yanlis uyari 0, kacan alakasiz 1 (React Native sorusu, 0.115).
 # Model degisirse yeniden kalibre edilmeli. Sadece isaretler, hicbir parcayi dusurmez.
-RELEVANCE_THRESHOLD = -1.25
+RELEVANCE_THRESHOLD = 0.05
 WINDOW_CHARS = 700  # sonuc basina pencere; eslesen parca bundan uzunsa tek basina gider
 WINDOW_RADIUS = 3  # her yone en fazla kac komsu parca
 MAX_OUTPUT_CHARS = 4000  # tum cevabin butcesi; en az bir sonuc her zaman gider

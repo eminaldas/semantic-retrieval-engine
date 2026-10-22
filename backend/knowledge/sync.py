@@ -23,8 +23,9 @@ def collect_files(project, settings, notes_dir=projects.NOTES_DIR):
     return files
 
 
-def sync_project(project, client, embedding_model, config=None, full=False, only=None, log=print):
+def sync_project(project, client, embedding_model, config=None, full=False, only=None, log=print, chunk_model=None):
     """only: verilirse sadece bu relpath'ler kontrol edilir (orn. yeni eklenen bir not).
+    chunk_model: parca sinirlarini belirleyen model (verilmezse embedding_model).
     Doner: {'indexed': [...], 'removed': [...], 'chunks': int}."""
     from backend.pipeline import chunker  # agir import (nltk, pypdf) - sadece gerektiginde
 
@@ -50,7 +51,7 @@ def sync_project(project, client, embedding_model, config=None, full=False, only
     for rel in changed:
         path = files[rel]
         raw_text = chunker.load_document(path)
-        chunks = projects.split_oversized(chunker.chunk_document(path, embedding_model)) if raw_text.strip() else []
+        chunks = projects.split_oversized(chunker.chunk_document(path, chunk_model or embedding_model)) if raw_text.strip() else []
         records = projects.build_chunk_records(project, rel, raw_text, chunks, mtime=os.path.getmtime(path))
         store.delete_source(client, projects.source_id_for(project, rel))
         if records:
@@ -68,19 +69,13 @@ def sync_project(project, client, embedding_model, config=None, full=False, only
 
 
 if __name__ == "__main__":
-    from dotenv import load_dotenv
-    from qdrant_client import QdrantClient
-    from sentence_transformers import SentenceTransformer
-
-    from backend.shared.paths import PROJECT_ROOT
-    from backend.knowledge.runtime import EMBEDDING_MODEL_NAME
+    from backend.knowledge.runtime import Runtime
 
     if len(sys.argv) < 2:
         print("Kullanim: python -m backend.knowledge.sync <proje> [--full]")
         sys.exit(1)
-    load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
-    client = QdrantClient(url=os.environ.get("QDRANT_URL", "http://localhost:6333"))
-    model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    report = sync_project(sys.argv[1], client, model, full="--full" in sys.argv)
+    runtime = Runtime()
+    report = sync_project(sys.argv[1], runtime.client(), runtime.embedder(), full="--full" in sys.argv,
+                          chunk_model=runtime.chunker_model())
     print(f"\nBASARILI! {len(report['indexed'])} dosya indekslendi ({report['chunks']} parca), "
           f"{len(report['removed'])} dosya kaldirildi.")
