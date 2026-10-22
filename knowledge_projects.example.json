@@ -1,8 +1,9 @@
 {
-  "nehaber": {
-    "description": "nehaber mobil uygulamasinin spec, plan ve rapor belgeleri",
-    "root": "C:/Users/emina/Documents/GitHub/nehaber-mobile",
-    "include": ["docs/**/*.md", "CLAUDE.md", "AGENTS.md", ".superpowers/sdd/*.md"],
-    "exclude": ["node_modules/**", "**/node_modules/**", ".git/**", ".expo/**"]
+  "_default_project": "my-project",
+  "my-project": {
+    "description": "Projenin spec, plan, karar ve rapor belgeleri",
+    "root": "C:/path/to/my-project",
+    "include": ["**/*.md"],
+    "exclude": [".git/**", "**/node_modules/**", "**/.venv/**", "**/venv*/**", "**/site-packages/**"]
   }
 }
