@@ -16,3 +16,4 @@ artifacts/
 # Yerel proje yollari ve Claude notlari (makineye ozel)
 knowledge_projects.json
 knowledge_notes/
+knowledge_eval/

@@ -271,13 +271,26 @@ def main():
     token = os.environ.get("MCP_HTTP_TOKEN", "")
     try:
         oauth = OAuthProvider(token, store_path=os.path.join(PROJECT_ROOT, "artifacts", "oauth", "store.json"))
-        httpd = build_server(MCPServer(KnowledgeService(Runtime())), token, port=args.port,
+        runtime = Runtime()
+        httpd = build_server(MCPServer(KnowledgeService(runtime)), token, port=args.port,
                              oauth=oauth, public_url=os.environ.get("MCP_PUBLIC_URL"))
     except ValueError as exc:
         print(f"HATA: {exc}", file=sys.stderr)
         sys.exit(1)
     print(f"MCP HTTP sunucusu: http://127.0.0.1:{args.port}{MCP_PATH}", file=sys.stderr, flush=True)
+    threading.Thread(target=_warm_up, args=(runtime,), daemon=True).start()
     httpd.serve_forever()
+
+
+def _warm_up(runtime):
+    """Modelleri acilista yukler: yoksa yeniden baslatma sonrasi ilk arama ~30 sn bekliyor."""
+    try:
+        runtime.client()
+        runtime.embedder().encode("isinma")
+        runtime.reranker().predict([("isinma", "isinma")])
+        print("Modeller hazir.", file=sys.stderr, flush=True)
+    except Exception as exc:  # isinma basarisizsa ilk arama yine tembel yukler
+        print(f"Isinma basarisiz: {exc}", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
