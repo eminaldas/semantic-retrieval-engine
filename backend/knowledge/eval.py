@@ -40,7 +40,7 @@ def is_hit(record, result):
         return True
     # Ayni bilgi birden cok yerde yazili olabilir: listeden herhangi biri yeter.
     options = [expected] if isinstance(expected, str) else expected
-    text = _norm_text(result["text"])
+    text = _norm_text(result.get("context", result["text"]))  # Claude'un gordugu pencere
     return any(_norm_text(option) in text for option in options)
 
 

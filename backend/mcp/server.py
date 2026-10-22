@@ -39,7 +39,7 @@ TOOLS = [
                 "query": {"type": "string", "description": "Dogal dilde soru ya da anahtar kelimeler"},
                 "project": _PROJECT,
                 "doc_type": {"type": "string", "enum": ["doc", "note"], "description": "Sadece belgeler ya da sadece notlar"},
-                "top_k": {"type": "integer", "minimum": 1, "maximum": 15, "default": 6},
+                "top_k": {"type": "integer", "minimum": 1, "maximum": 15, "default": 5},
             },
             "required": ["query"],
         },

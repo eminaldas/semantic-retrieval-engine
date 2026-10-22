@@ -36,7 +36,7 @@ class KnowledgeService:
         lines = [f"- {name}: {settings.get('description', '')} ({settings.get('root')})".rstrip() for name, settings in sorted(config.items())]
         return "Tanimli projeler:\n" + "\n".join(lines)
 
-    def search(self, query, project=None, doc_type=None, top_k=6):
+    def search(self, query, project=None, doc_type=None, top_k=5):
         if not query or not query.strip():
             raise ValueError("query bos olamaz")
         top_k = max(1, min(int(top_k), 15))
