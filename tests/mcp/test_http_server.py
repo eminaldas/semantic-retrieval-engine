@@ -48,6 +48,19 @@ def test_missing_or_wrong_token_is_401(base_url):
     assert _post(base_url + "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "ping"}, token="y" * 32)[0] == 401
 
 
+def test_only_a_rejected_token_gets_invalid_token_challenge(base_url):
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}).encode()
+    challenges = []
+    for headers in ({"Authorization": "Bearer " + "y" * 32}, {}):
+        req = urllib.request.Request(base_url + "/mcp", data=body, method="POST",
+                                     headers={"Content-Type": "application/json", **headers})
+        with pytest.raises(urllib.error.HTTPError) as info:
+            urllib.request.urlopen(req)
+        challenges.append(info.value.headers["WWW-Authenticate"])
+    # suresi dolmus token istemciyi refresh'e yonlendirir; token hic yoksa sadece Bearer
+    assert challenges == ['Bearer error="invalid_token"', "Bearer"]
+
+
 def test_api_key_header_is_accepted(base_url):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}).encode()
     for key, expected in ((TOKEN, 200), ("y" * 32, 401)):
