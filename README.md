@@ -45,7 +45,8 @@ flowchart LR
 `index_status` (git-status style: new, changed, deleted) · `sync_project` · `list_projects`
 
 The server speaks MCP over stdio (Claude Code) and over Streamable HTTP (claude.ai custom
-connectors) with token or OAuth 2.1 + PKCE authentication. It is written without the MCP SDK.
+connectors) with token or OAuth 2.1 + PKCE authentication (dynamic client registration and
+refresh tokens, verified with a claude.ai connector). It is written without the MCP SDK.
 
 ## Measured, not guessed
 
@@ -118,8 +119,5 @@ tools/windows/       autostart for Docker, server and tunnel at logon
 
 ## Known issues
 
-- With the claude.ai connector in OAuth mode, claude.ai stops sending the bearer token after the
-  first few requests. The connector works with a static `X-API-Key` header instead. The OAuth
-  endpoints pass their own tests, so the cause is still open.
 - Unanswerable and answerable questions are separated by a narrow score margin (0.041 vs 0.069).
   The threshold must be recalibrated after any model or context change.
