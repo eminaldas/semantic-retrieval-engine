@@ -29,6 +29,7 @@ COLBERT = "colbert"
 COLBERT_DIM = 1024
 HEADS_REPO = "BAAI/bge-m3"
 RETRIEVERS = ("bm25", "m3-sparse", "hybrid3", "colbert")
+UPSERT_BATCH = 4
 
 
 def embed_text_from_payload(payload):
@@ -131,11 +132,13 @@ def build(client, heads, project, batch_size=64, log=print):
         if total == 0:
             ensure_collection(client, len(points[0].vector[store.DENSE]))
         encoded = heads.encode([embed_text_from_payload(p.payload) for p in points])
-        client.upsert(COLLECTION_NAME, points=[
-            models.PointStruct(id=p.id, payload=p.payload, vector={
-                store.DENSE: p.vector[store.DENSE], store.SPARSE: p.vector[store.SPARSE],
-                M3_SPARSE: _sparse(sparse), COLBERT: colbert})
-            for p, (sparse, colbert) in zip(points, encoded)])
+        batch = [models.PointStruct(id=p.id, payload=p.payload, vector={
+                     store.DENSE: p.vector[store.DENSE], store.SPARSE: p.vector[store.SPARSE],
+                     M3_SPARSE: _sparse(sparse), COLBERT: colbert})
+                 for p, (sparse, colbert) in zip(points, encoded)]
+        # ColBERT parca basina token x 1024 sayi; 64'luk tek istek Qdrant'in 32 MB JSON sinirini asiyordu.
+        for start in range(0, len(batch), UPSERT_BATCH):
+            client.upsert(COLLECTION_NAME, points=batch[start:start + UPSERT_BATCH])
         total += len(points)
         log(f"  {total} parca")
         if offset is None:
