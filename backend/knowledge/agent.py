@@ -50,6 +50,8 @@ NOT_FOUND_RE = re.compile(
     r"(?:almiyor|almamaktadir|bulunmuyor|bulunmamaktadir|yok\b)", re.IGNORECASE)
 NOT_FOUND_SPAN = 300  # 'bulamadim' cevabin basinda aranir; govdedeki yan notlar sayilmaz
 _BRACKET_RE = re.compile(r"\[([^\[\]]+)\]")
+# Tirnak icindeki alinti; Turkce ek kesme isareti (KARARLAR'da) harften sonra gelir, alinti sanilmaz.
+_QUOTED_RE = re.compile(r"(?<!\w)'[^'\n]{1,120}'(?!\w)|\"[^\"\n]{1,120}\"|“[^”\n]{1,120}”|(?<!\w)‘[^’\n]{1,120}’(?!\w)")
 _PATH_RE = re.compile(r"[\w./\\-]+\.(?:md|txt|pdf|docx|html?)", re.IGNORECASE)
 
 
@@ -69,7 +71,9 @@ class AgentResult:
 
     @property
     def says_not_found(self):
-        return bool(NOT_FOUND_RE.search(_ascii_fold(self.answer[:NOT_FOUND_SPAN])))
+        # Belgeden alintilanan ifade ("ŞİMDİLİK YOK" gibi) cevabin kendi hukmu sayilmaz.
+        head = _QUOTED_RE.sub(" ", self.answer[:NOT_FOUND_SPAN])
+        return bool(NOT_FOUND_RE.search(_ascii_fold(head)))
 
 
 def _answer_text(response):
