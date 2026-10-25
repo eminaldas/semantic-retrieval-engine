@@ -76,6 +76,16 @@ def test_empty_stop_gets_one_tool_free_retry():
     assert result.answer == "Cevap [a.md]." and str(gemini.modes[-1]).endswith("NONE")
 
 
+def test_quoted_document_text_is_not_a_not_found_answer():
+    # d04: belge 'ŞİMDİLİK YOK' diyor; cevap bunu aktariyor, "bulamadim" demiyor.
+    answer = "Belgelerde 'ŞİMDİLİK YOK, sonraya not' ifadesi yer almakta [GELECEK_ISLER.md]."
+    assert not agent.AgentResult(answer).says_not_found
+    assert not agent.AgentResult("Belgelerde “yok” diye işaretlenmiş [a.md].").says_not_found
+    assert agent.AgentResult("Belgelerde bulamadım. Yakın olarak 'eşik' geçiyor [a.md].").says_not_found
+    # ek kesme isaretleri arasi alinti sayilmaz, asil hukum korunur
+    assert agent.AgentResult("KARARLAR'da ve belgelerde bu bilgi yok; HAT_PLANI'nda da gecmiyor.").says_not_found
+
+
 def test_not_found_phrasings_only_count_at_the_start():
     assert agent.AgentResult("Proje belgelerinde bu konuda bir bilgi bulunmamaktadır.").says_not_found
     assert not agent.AgentResult("Postgres seçildi [a.md]. " + "x" * 400 + " Belgelerde bulamadım.").says_not_found
