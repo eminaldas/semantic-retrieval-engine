@@ -83,8 +83,9 @@ def test_project_hint_reuses_search_score_and_probes_only_others(monkeypatch):
 
 
 def test_project_hint_skips_probe_when_search_is_confident(monkeypatch):
-    def fail(*a, **k):
-        raise AssertionError("yoklama yapilmamali")
-
-    monkeypatch.setattr(routing, "probe", fail)
-    assert routing.project_hint(None, None, None, "soru", "a", ["a", "b"], current_score=0.85) is None
+    called = []
+    monkeypatch.setattr(routing, "probe", lambda *a, **k: called.append(1) or {"b": 1.0})
+    assert routing.project_hint(None, None, None, "soru", "a", ["a", "b"], current_score=0.95) is None
+    assert called == []
+    routing.project_hint(None, None, None, "soru", "a", ["a", "b"], current_score=0.5)
+    assert called == [1]
