@@ -91,6 +91,15 @@ prompt makes "not found" the first sentence, which is the only place the scorer 
 The five remaining misses give sensible answers that cite a different document than the gold
 set expects.
 
+`--judge` also asks an LLM judge (Gemini Flash, binary labels) whether each answer is grounded in
+the text the agent retrieved and whether it matches the gold reference.
+
+The gold set is maintained with `python -m backend.knowledge.goldgen`: `audit` lists records whose
+expected text also appears in documents the record does not accept (a correct retrieval would be
+scored as a miss), and `generate` drafts harder candidates (paraphrase, numbers, rationale, timeline,
+two-document and near-miss unanswerable questions). Every candidate must quote its source verbatim
+or it is dropped; candidates are marked `synthetic` and stay out of the gold set until reviewed.
+
 ## Tracing
 
 Every search, MCP tool call, agent step and eval question is an OpenTelemetry trace in the

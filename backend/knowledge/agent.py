@@ -8,7 +8,7 @@ ayri projeler yanlislikla karismasin).
 
 Kullanim:
   python -m backend.knowledge.agent "soru" [--project factprobe]
-  python -m backend.knowledge.agent --eval [--limit 20]   # altin sette kaynak isabeti"""
+  python -m backend.knowledge.agent --eval [--limit 20] [--judge]   # altin sette kaynak isabeti (+ LLM yargic)"""
 
 import argparse
 import json
@@ -57,6 +57,7 @@ _PATH_RE = re.compile(r"[\w./\\-]+\.(?:md|txt|pdf|docx|html?)", re.IGNORECASE)
 class AgentResult:
     answer: str
     steps: list = field(default_factory=list)  # [(arac, argumanlar)]
+    evidence: list = field(default_factory=list)  # modele giden arac ciktilari; yargic bunlara bakar
     prompt_tokens: int = 0
     output_tokens: int = 0
     seconds: float = 0.0
@@ -210,7 +211,9 @@ class ResearchAgent:
             for call in calls:
                 args = dict(call.args or {})
                 result.steps.append((call.name, args))
-                parts.append(types.Part.from_function_response(name=call.name, response={"result": self.run_tool(call.name, args)}))
+                output = self.run_tool(call.name, args)
+                result.evidence.append(output)
+                parts.append(types.Part.from_function_response(name=call.name, response={"result": output}))
             contents.append(types.Content(role="user", parts=parts))
         result.seconds = time.monotonic() - started
         return result
@@ -232,15 +235,38 @@ def score_answer(record, result):
     return {"ok": hit and not result.says_not_found, "kind": "cite"}
 
 
-def _evaluate(service, project, limit):
+def judge_record(client, record, result):
+    """Cevaplanabilir soruda ve ajan bir cevap verdiyse yargica sorar; 'bulamadim' cevaplari ve
+    cevapsiz sorular zaten score_answer ile olculuyor."""
+    from backend.knowledge import judge
+
+    if not record["expected_paths"] or result.says_not_found:
+        return None
+    reference = record.get("reference_answer") or record.get("expected_text")
+    return judge.judge_answer(client, record["question"], result.evidence, result.answer, reference=reference)
+
+
+def judge_summary(verdicts):
+    judged = [v for v in verdicts if v and v["error"] is None]
+    if not judged:
+        return {}
+    cost = sum(cost_usd(AgentResult("", prompt_tokens=v["prompt_tokens"], output_tokens=v["output_tokens"])) or 0
+               for v in judged)
+    return {"judged": len(judged), "judge_errors": sum(1 for v in verdicts if v and v["error"]),
+            "grounded_rate": sum(v["grounded"] for v in judged) / len(judged),
+            "correct_rate": sum(v["correct"] for v in judged) / len(judged),
+            "judge_cost_usd": round(cost, 4)}
+
+
+def _evaluate(service, project, limit, use_judge=False, golden_path=None):
     from backend.knowledge import eval as golden
     from backend.shared.paths import PROJECT_ROOT
 
-    records = golden.load_golden_set(os.path.join(PROJECT_ROOT, "knowledge_eval", f"{project}.jsonl"))
+    records = golden.load_golden_set(golden_path or os.path.join(PROJECT_ROOT, "knowledge_eval", f"{project}.jsonl"))
     records = records[:limit] if limit else records
     agent = ResearchAgent(service, project=project)
     rows, totals = [], {"cite": [0, 0], "abstain": [0, 0]}
-    cost, seconds, steps = 0.0, [], []
+    cost, seconds, steps, verdicts = 0.0, [], [], []
     for record in records:
         result = agent.ask(record["question"])
         verdict = score_answer(record, result)
@@ -249,10 +275,13 @@ def _evaluate(service, project, limit):
         cost += cost_usd(result) or 0.0
         seconds.append(result.seconds)
         steps.append(len(result.steps))
+        judged = judge_record(agent._gemini(), record, result) if use_judge else None
+        verdicts.append(judged)
         rows.append({"id": record["id"], "ok": verdict["ok"], "steps": result.steps, "citations": result.citations,
-                     "answer": result.answer[:400]})
+                     "answer": result.answer[:400], "judge": judged})
+        mark = "" if not judged else f" grounded={judged['grounded']} correct={judged['correct']}"
         print(f"{'OK' if verdict['ok'] else '--'} {record['id']} adim={len(result.steps)} "
-              f"kaynak={result.citations[:3]} {result.seconds:.1f}s", flush=True)
+              f"kaynak={result.citations[:3]} {result.seconds:.1f}s{mark}", flush=True)
     summary = {
         "questions": len(records),
         "citation_accuracy": totals["cite"][0] / max(1, totals["cite"][1]),
@@ -260,6 +289,7 @@ def _evaluate(service, project, limit):
         "mean_tool_calls": sum(steps) / max(1, len(steps)),
         "median_seconds": sorted(seconds)[len(seconds) // 2] if seconds else 0,
         "total_cost_usd": round(cost, 4),
+        **judge_summary(verdicts),
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     out = os.path.join(PROJECT_ROOT, "artifacts", "knowledge_eval", f"{project}_agent.jsonl")
@@ -278,6 +308,8 @@ def main():
     parser.add_argument("--project")
     parser.add_argument("--eval", action="store_true")
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--judge", action="store_true", help="cevaplari LLM yargica da puanlat (grounded/correct)")
+    parser.add_argument("--golden-set", default=None)
     args = parser.parse_args()
     service = KnowledgeService(Runtime())
     tracing.init_tracing("rag-agent-eval" if args.eval else "rag-agent")
@@ -289,7 +321,8 @@ def main():
 
 def _run_cli(service, args, parser):
     if args.eval:
-        return _evaluate(service, args.project or service.resolve_project(None), args.limit)
+        return _evaluate(service, args.project or service.resolve_project(None), args.limit,
+                         use_judge=args.judge, golden_path=args.golden_set)
     if not args.question:
         parser.error("soru ya da --eval gerekli")
     result = ResearchAgent(service, project=args.project).ask(args.question)

@@ -48,3 +48,25 @@ def test_aggregate():
     assert summary["false_abstain"] == 1 / 3
     assert summary["abstain_accuracy"] == 1.0
     assert summary["hit@3_by_type"] == {"karar": 0.5, "sayi": 0.0}
+
+
+def test_decimal_comma_matches_dot():
+    record = {"expected_paths": ["A.md"], "expected_text": "eşik 0.91"}
+    assert ev.is_hit(record, _r("A.md", "e5 eşik 0,91 olarak sabitlendi"))
+
+
+def test_multihop_counts_each_hop():
+    record = {"id": "m", "type": "cok_adim", "expected_paths": ["A.md", "B.md"], "expected_text": None,
+              "hops": [{"paths": ["A.md"]}, {"paths": ["B.md"], "text": "ikinci"}]}
+    both = ev.score_record(record, [_r("A.md"), _r("B.md", "ikinci adim")])
+    one = ev.score_record(record, [_r("A.md"), _r("B.md", "baska")])
+    assert (both["hops_found"], one["hops_found"]) == (2, 1)
+    summary = ev.aggregate([both, one])
+    assert summary["multihop_recall"] == 0.5
+
+
+def test_origin_split_only_when_mixed():
+    human = {"answerable": True, "type": "karar", "rank": 1, "abstained": False, "origin": "human"}
+    synth = {"answerable": True, "type": "karar", "rank": None, "abstained": False, "origin": "synthetic"}
+    assert "hit@3_by_origin" not in ev.aggregate([human])
+    assert ev.aggregate([human, synth])["hit@3_by_origin"] == {"human": 1.0, "synthetic": 0.0}
