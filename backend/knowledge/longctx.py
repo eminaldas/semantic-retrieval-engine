@@ -20,6 +20,9 @@ from backend.shared import tracing
 CALL_SITE = "knowledge_longctx"
 CACHE_TTL = "3600s"
 MAX_CORPUS_TOKENS = 900_000  # Flash'in 1M baglaminda soru ve cevaba yer kalsin
+# Yargica tam belgeler gider; ajanin 24k sinirinda cok kaynakli cevabin son belgesi kesilip dogru iddialar
+# "desteksiz" sayiliyordu (smoke testte k01: KARARLAR_OZET.md GEREKSINIMLER.md'den sonra kesildi).
+JUDGE_EVIDENCE_CHARS = 100_000
 
 # Arama araclari yok; cevap kurallari ajaninkiyle ayni ki puanlama ayni sekilde calissin.
 INSTRUCTION = ("Sen bir proje belgeleri asistanisin. Projenin TUM belgeleri asagida <belge> etiketleri icinde. "
@@ -41,6 +44,8 @@ def cited_evidence(docs, citations):
 
 class LongContextReader:
     """ResearchAgent ile ayni arayuz (ask -> AgentResult), boylece agent._evaluate ikisini de olcer."""
+
+    judge_evidence_chars = JUDGE_EVIDENCE_CHARS
 
     def __init__(self, docs, model=DEFAULT_MODEL, client=None):
         self.docs, self.model, self._client = docs, model, client

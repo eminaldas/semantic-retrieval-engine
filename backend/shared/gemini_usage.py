@@ -46,6 +46,8 @@ def log_usage(call_site, model, response, log_path=DEFAULT_LOG_PATH):
     if prompt_tokens is None or output_tokens is None or total_tokens is None:
         return
 
+    # Onbellekten (cached content) okunan token ~%10 fiyatla faturalanir; depolama ucreti burada yok.
+    cached_tokens = getattr(usage, "cached_content_token_count", None) or 0
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "call_site": call_site,
@@ -53,8 +55,10 @@ def log_usage(call_site, model, response, log_path=DEFAULT_LOG_PATH):
         "prompt_tokens": prompt_tokens,
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
-        "estimated_cost_usd": _estimate_cost(model, prompt_tokens, output_tokens),
+        "estimated_cost_usd": _estimate_cost(model, int(prompt_tokens - 0.9 * cached_tokens), output_tokens),
     }
+    if cached_tokens:
+        entry["cached_tokens"] = cached_tokens
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")

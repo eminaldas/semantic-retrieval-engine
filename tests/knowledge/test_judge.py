@@ -57,3 +57,8 @@ def test_judge_summary_ignores_errors():
     assert summary["judged"] == 1 and summary["judge_errors"] == 1
     assert summary["grounded_rate"] == 1.0 and summary["correct_rate"] == 0.0
     assert agent.judge_summary([None]) == {}
+
+
+def test_evidence_limit_can_be_raised():
+    long = ["x" * (judge.MAX_EVIDENCE_CHARS + 500)]
+    assert "[... kesildi]" not in judge.build_prompt("s", long, "c", max_evidence_chars=judge.MAX_EVIDENCE_CHARS * 2)

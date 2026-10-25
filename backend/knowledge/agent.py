@@ -241,7 +241,7 @@ def score_answer(record, result):
     return {"ok": hit and not result.says_not_found, "kind": "cite"}
 
 
-def judge_record(client, record, result):
+def judge_record(client, record, result, max_evidence_chars=None):
     """Cevaplanabilir soruda ve ajan bir cevap verdiyse yargica sorar; 'bulamadim' cevaplari ve
     cevapsiz sorular zaten score_answer ile olculuyor."""
     from backend.knowledge import judge
@@ -249,7 +249,8 @@ def judge_record(client, record, result):
     if not record["expected_paths"] or result.says_not_found:
         return None
     reference = record.get("reference_answer") or record.get("expected_text")
-    return judge.judge_answer(client, record["question"], result.evidence, result.answer, reference=reference)
+    return judge.judge_answer(client, record["question"], result.evidence, result.answer, reference=reference,
+                              max_evidence_chars=max_evidence_chars or judge.MAX_EVIDENCE_CHARS)
 
 
 def judge_summary(verdicts):
@@ -281,7 +282,8 @@ def _evaluate(service, project, limit, use_judge=False, golden_path=None, agent=
         cost += cost_usd(result) or 0.0
         seconds.append(result.seconds)
         steps.append(len(result.steps))
-        judged = judge_record(agent._gemini(), record, result) if use_judge else None
+        judged = (judge_record(agent._gemini(), record, result, getattr(agent, "judge_evidence_chars", None))
+                  if use_judge else None)
         verdicts.append(judged)
         rows.append({"id": record["id"], "ok": verdict["ok"], "steps": result.steps, "citations": result.citations,
                      "answer": result.answer[:400], "judge": judged})
