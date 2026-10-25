@@ -22,8 +22,11 @@ from backend.knowledge import search, store
 from backend.shared import tracing
 
 PROBE_CANDIDATES = 10
-HINT_MARGIN = 0.2
-HINT_MIN_SCORE = 0.3
+# 2026-10-25 taramasi (factprobe 93 soru, fake-news 66 sentetik aday): marj 0.1 / en az 0.2 ile yanlis alarm
+# 1/93 (y11, cevapsiz bir React Native sorusu), isabet 47/66; kacanlarin cogunda fake-news de bulamiyor (skor < 0.2).
+# Marj 0.05 ya da en az 0.15'e inince yanlis alarm 3/93 olur.
+HINT_MARGIN = 0.1
+HINT_MIN_SCORE = 0.2
 SKIP_SCORE = 1.0  # rerank skoru sigmoid; varsayilan skor + marj bunu gecerse ipucu imkansiz, yoklama atlanir
 MARGINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
 
