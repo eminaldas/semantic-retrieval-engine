@@ -63,6 +63,28 @@ def test_project_hint_survives_errors(monkeypatch):
 
 
 def test_golden_files_skip_backups_and_candidates(tmp_path):
+    import os
+
     for name in ("p.jsonl", "p_hard.jsonl", "p_candidates.jsonl", "p_v1_2026-10-25.jsonl", "q.jsonl"):
         (tmp_path / name).write_text("")
-    assert [p.rsplit("/", 1)[-1] for p in routing.golden_files("p", str(tmp_path))] == ["p.jsonl", "p_hard.jsonl"]
+    assert [os.path.basename(p) for p in routing.golden_files("p", str(tmp_path))] == ["p.jsonl", "p_hard.jsonl"]
+
+
+def test_project_hint_reuses_search_score_and_probes_only_others(monkeypatch):
+    seen = {}
+
+    def fake_probe(client, embedder, cross_encoder, query, projects):
+        seen["projects"] = projects
+        return {"b": 0.9}
+
+    monkeypatch.setattr(routing, "probe", fake_probe)
+    text = routing.project_hint(None, None, None, "soru", "a", ["a", "b"], current_score=0.1)
+    assert seen["projects"] == ["b"] and "project='b'" in text and "0.10" in text
+
+
+def test_project_hint_skips_probe_when_search_is_confident(monkeypatch):
+    def fail(*a, **k):
+        raise AssertionError("yoklama yapilmamali")
+
+    monkeypatch.setattr(routing, "probe", fail)
+    assert routing.project_hint(None, None, None, "soru", "a", ["a", "b"], current_score=0.85) is None

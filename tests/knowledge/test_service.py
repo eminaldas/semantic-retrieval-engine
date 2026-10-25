@@ -69,8 +69,9 @@ def _search_service(monkeypatch, hint):
 
     service.runtime = Runtime()
 
-    def fake_hint(client, embedder, reranker, query, current, projects):
+    def fake_hint(client, embedder, reranker, query, current, projects, current_score=None):
         seen["hint_args"] = (current, projects)
+        seen["current_score"] = current_score
         return hint
 
     monkeypatch.setattr(routing, "project_hint", fake_hint)
@@ -80,7 +81,7 @@ def _search_service(monkeypatch, hint):
 def test_search_without_project_appends_hint(monkeypatch):
     service, seen = _search_service(monkeypatch, "Not: b")
     assert service.search("soru") == "SONUC\n\nNot: b"
-    assert seen["project"] == "a" and seen["hint_args"] == ("a", ["a", "b"])
+    assert seen["project"] == "a" and seen["hint_args"] == ("a", ["a", "b"]) and seen["current_score"] == 0.0
 
 
 def test_search_with_explicit_project_skips_hint(monkeypatch):

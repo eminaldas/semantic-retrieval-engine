@@ -24,6 +24,7 @@ from backend.shared import tracing
 PROBE_CANDIDATES = 10
 HINT_MARGIN = 0.2
 HINT_MIN_SCORE = 0.3
+SKIP_SCORE = 1.0  # rerank skoru sigmoid; varsayilan skor + marj bunu gecerse ipucu imkansiz, yoklama atlanir
 MARGINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
 
 
@@ -57,18 +58,25 @@ def hint_text(project, scores, current):
             f"O projede aramak icin project='{project}' verin.")
 
 
-def project_hint(client, embedder, cross_encoder, query, current, projects):
-    """Servis icin: ipucu metni ya da None. Hata aramayi bozmaz."""
+def project_hint(client, embedder, cross_encoder, query, current, projects, current_score=None):
+    """Servis icin: ipucu metni ya da None. Hata aramayi bozmaz.
+    current_score: aramanin kendi en iyi skoru; verilirse varsayilan proje yeniden yoklanmaz ve
+    SKIP_SCORE'un ustundeyse hic yoklama yapilmaz (ipucu icin digerinin 1'i asmasi gerekirdi)."""
     others = [p for p in projects if p != current]
     if not current or not others:
+        return None
+    if current_score is not None and current_score + HINT_MARGIN >= SKIP_SCORE:
         return None
     with tracing.span("project_hint", tracing.CHAIN, **{"input.value": tracing.clip(query),
                                                         "rag.project": current}) as span:
         try:
-            scores = probe(client, embedder, cross_encoder, query, [current] + others)
+            scores = probe(client, embedder, cross_encoder, query,
+                           others if current_score is not None else [current] + others)
         except Exception as exc:
             span.set("rag.error", f"{type(exc).__name__}: {exc}")
             return None
+        if current_score is not None:
+            scores[current] = current_score
         hinted = pick_hint(scores, current)
         span.update({"rag.project_scores": json.dumps(scores), "rag.hint": hinted})
     return hint_text(hinted, scores, current) if hinted else None

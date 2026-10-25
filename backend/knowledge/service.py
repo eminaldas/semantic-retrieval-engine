@@ -96,21 +96,25 @@ class KnowledgeService:
         # Proje verilmediyse soru baska projeye daha iyi uyuyor mu diye bakilir (routing.py); sadece not duser.
         hint_projects = sorted(self._projects()) if not project and self.project_hints else []
         if len(batch) == 1:
-            return self._with_hint(search.format_results(self._search_one(batch[0], top_k, options)),
-                                   batch[0], options["project"], hint_projects)
+            results = self._search_one(batch[0], top_k, options)
+            return self._with_hint(search.format_results(results), batch[0], options["project"], hint_projects,
+                                   results)
         # Toplu sorguda butce sorulara bolunur ki toplam baglam tek sorgununkinin ~1.5 katini gecmesin.
         budget = max(1500, int(search.MAX_OUTPUT_CHARS * 1.5) // len(batch))
-        sections = [f"## Soru {i}: {q}\n\n" + self._with_hint(
-                        search.format_results(self._search_one(q, top_k, options), max_chars=budget),
-                        q, options["project"], hint_projects)
-                    for i, q in enumerate(batch, start=1)]
+        sections = []
+        for i, q in enumerate(batch, start=1):
+            results = self._search_one(q, top_k, options)
+            text = self._with_hint(search.format_results(results, max_chars=budget), q, options["project"],
+                                   hint_projects, results)
+            sections.append(f"## Soru {i}: {q}\n\n{text}")
         return "\n\n======\n\n".join(sections)
 
-    def _with_hint(self, text, query, current, projects):
+    def _with_hint(self, text, query, current, projects, results):
         if len(projects) < 2:
             return text
+        best = max((r["rerank_score"] for r in results), default=0.0)
         hint = routing.project_hint(self.runtime.client(), self.runtime.embedder(), self.runtime.reranker(),
-                                    query, current, projects)
+                                    query, current, projects, current_score=best)
         return f"{text}\n\n{hint}" if hint else text
 
     def ask(self, question, project=None):
