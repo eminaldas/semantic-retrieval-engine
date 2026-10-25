@@ -98,3 +98,31 @@ class TestDiversify:
     def test_no_cap_is_plain_truncation(self):
         ranked = [self._r("A.md", i) for i in range(1, 5)]
         assert search.diversify(ranked, None, 2) == (ranked[:2], 0)
+
+
+class TestSubqueries:
+    def _r(self, cid, score=0.5):
+        return {"chunk_id": cid, "rerank_score": score}
+
+    def test_interleave_takes_each_lists_best_first_and_dedupes(self):
+        a = [self._r("A#1"), self._r("A#2"), self._r("S#1")]
+        b = [self._r("S#1"), self._r("B#2")]
+        out = search.interleave([a, b], limit=4)
+        assert [r["chunk_id"] for r in out] == ["A#1", "S#1", "A#2", "B#2"]
+
+    def test_each_subquery_is_retrieved_and_reranked_on_its_own(self, monkeypatch):
+        pools = {"ana": [{"chunk_id": "p:a.md#0001", "path": "a.md", "location": "satır 1-2", "text": "aaaa"}],
+                 "ikinci": [{"chunk_id": "p:b.md#0001", "path": "b.md", "location": "satır 1-2", "text": "bb"}]}
+        monkeypatch.setattr(search.store, "hybrid_search", lambda client, dense, q, flt=None, limit=20: pools[q])
+        monkeypatch.setattr(search, "fetch_chunks", lambda client, ids: {})
+        seen = []
+
+        class Embedder:
+            def encode(self, text):
+                seen.append(text)
+                return [0.0]
+
+        results = search.search(None, Embedder(), FakeCrossEncoder(), "ana", top_k=2,
+                                subqueries=["ikinci", "ana", " "])
+        assert seen == ["ana", "ikinci"]  # sorunun kendisi ve bos parca tekrar aranmaz
+        assert [r["path"] for r in results] == ["a.md", "b.md"]

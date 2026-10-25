@@ -108,10 +108,20 @@ def _percentile(values, p):
     return ordered[min(len(ordered) - 1, int(round(p / 100 * (len(ordered) - 1))))]
 
 
+def _gemini_client():
+    from dotenv import load_dotenv
+    from google import genai
+
+    from backend.shared.paths import PROJECT_ROOT
+
+    load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+    return genai.Client(api_key=os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+
+
 def main():
     import argparse
 
-    from backend.knowledge import search
+    from backend.knowledge import decompose, search
     from backend.knowledge.runtime import Runtime
     from backend.knowledge.service import KnowledgeService
     from backend.shared import tracing
@@ -123,6 +133,8 @@ def main():
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--label", default="", help="kosuya not (orn. 'baseline', 'bge-m3')")
     parser.add_argument("--max-per-source", type=int, default=None, help="belge basina en fazla sonuc (A/B icin)")
+    parser.add_argument("--decompose", action="store_true",
+                        help="soruyu Gemini ile parcalara bolup her parcayi ayri ara (sure parcalamayi da icerir)")
     args = parser.parse_args()
 
     golden_path = args.golden_set or os.path.join(PROJECT_ROOT, "knowledge_eval", f"{args.project}.jsonl")
@@ -134,6 +146,7 @@ def main():
     client, embedder, reranker = runtime.client(), runtime.embedder(), runtime.reranker()
     search.search(client, embedder, reranker, "isinma", project=project, top_k=1)  # model yuklemesi olcume girmesin
     tracing.init_tracing("rag-eval")  # her soru Phoenix'te ayri iz; kacan sorular oradan incelenir
+    gemini = _gemini_client() if args.decompose else None
 
     scores, latencies, chars = [], [], []
     for record in records:
@@ -142,7 +155,9 @@ def main():
                                                                 "label": args.label, "project": project},
                 "rag.expected_paths": record["expected_paths"] or None}) as span:
             start = time.perf_counter()
+            subqueries = decompose.decompose(gemini, record["question"]) if gemini else None
             results = search.search(client, embedder, reranker, record["question"], project=project, top_k=args.top_k,
+                                    subqueries=subqueries,
                                     **({"max_per_source": args.max_per_source} if args.max_per_source else {}))
             latencies.append(time.perf_counter() - start)
             chars.append(len(search.format_results(results)))
@@ -152,6 +167,8 @@ def main():
                          "rag.passed": (score["rank"] is not None and score["rank"] <= 3) if score["answerable"]
                          else score["abstained"]})
         score["top"] = [f"{r['path']} {r['rerank_score']:.2f}" for r in results[:3]]
+        if subqueries:
+            score["subqueries"] = subqueries
         score["top1_score"] = results[0]["rerank_score"] if results else None
         scores.append(score)
         mark = ("OK " if score["rank"] and score["rank"] <= 3 else "-- ") if score["answerable"] else \
@@ -183,6 +200,7 @@ def main():
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(json.dumps({"timestamp": datetime.now(timezone.utc).isoformat(), "label": args.label,
                             "top_k": args.top_k, "max_per_source": args.max_per_source,
+                            "decompose": args.decompose,
                             "summary": summary, "per_question": scores},
                            ensure_ascii=False) + "\n")
     print(f"\nKayit: {log_path}")
