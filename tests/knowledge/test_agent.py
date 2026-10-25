@@ -98,3 +98,29 @@ def test_score_answer():
     assert not agent.score_answer({"expected_paths": ["graf/README.md"]}, cited)["ok"]
     refusal = AgentResult(answer="Belgelerde bulamadım.")
     assert agent.score_answer({"expected_paths": []}, refusal)["ok"]
+
+
+def test_agent_trace_has_llm_and_tool_spans():
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from backend.shared import tracing
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tracing.install(provider)
+    try:
+        gemini = FakeGemini([_response(calls=[("search", {"query": "graf db"})]),
+                             _response(text="Postgres + pgvector [KARARLAR_OZET.md].")])
+        ResearchAgent(FakeService(), client=gemini).ask("Graf icin hangi veritabani?")
+    finally:
+        tracing.uninstall()
+    spans = exporter.get_finished_spans()
+    kinds = [s.attributes["openinference.span.kind"] for s in spans]
+    assert kinds.count("LLM") == 2 and kinds.count("TOOL") == 1 and kinds.count("AGENT") == 1
+    root = next(s for s in spans if s.name == "agent.ask")
+    assert tuple(root.attributes["rag.citations"]) == ("KARARLAR_OZET.md",)
+    assert root.attributes["llm.token_count.prompt"] == 200
+    assert all(s.context.trace_id == root.context.trace_id for s in spans)

@@ -11,6 +11,8 @@ import json
 import sys
 import traceback
 
+from backend.shared import tracing
+
 SERVER_INFO = {"name": "semantic-retrieval-engine", "version": "0.1.0"}
 SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"]
 
@@ -170,13 +172,20 @@ class MCPServer:
         unknown = set(args) - _ALLOWED_ARGS[name]
         if unknown:
             return _tool_text(f"Bilinmeyen parametre(ler): {', '.join(sorted(unknown))}", is_error=True)
-        try:
-            return _tool_text(getattr(self.service, name)(**args))
-        except (ValueError, KeyError, TypeError) as exc:
-            return _tool_text(f"Hata: {exc}", is_error=True)
-        except Exception as exc:  # Qdrant kapali vb. - istemciye anlamli mesaj, ayrinti stderr'e
-            traceback.print_exc(file=sys.stderr)
-            return _tool_text(f"Beklenmeyen hata ({type(exc).__name__}): {exc}. Qdrant ayakta mi? (docker compose up -d)", is_error=True)
+        params = json.dumps(args, ensure_ascii=False)
+        with tracing.span(f"tool.{name}", tracing.TOOL, **{"tool.name": name, "tool.parameters": params,
+                                                           "input.value": tracing.clip(params)}) as span:
+            try:
+                text, is_error = getattr(self.service, name)(**args), False
+            except (ValueError, KeyError, TypeError) as exc:
+                text, is_error = f"Hata: {exc}", True
+                span.set("rag.error_kind", "input").error(exc)
+            except Exception as exc:  # Qdrant kapali vb. - istemciye anlamli mesaj, ayrinti stderr'e
+                traceback.print_exc(file=sys.stderr)
+                text, is_error = f"Beklenmeyen hata ({type(exc).__name__}): {exc}. Qdrant ayakta mi? (docker compose up -d)", True
+                span.set("rag.error_kind", "internal").error(exc)
+            span.set("output.value", tracing.clip(text)).set("rag.output_chars", len(text))
+            return _tool_text(text, is_error=is_error)
 
 
 def _result(msg_id, result):
@@ -217,6 +226,7 @@ def main():
     protocol_out = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", newline="\n")
     protocol_in = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
     sys.stdout = sys.stderr  # kutuphanelerin print'leri protokolu bozmasin
+    tracing.init_tracing("rag-mcp")
     serve(MCPServer(KnowledgeService(Runtime())), protocol_in, protocol_out)
 
 

@@ -18,6 +18,8 @@ import sys
 import time
 from dataclasses import dataclass, field
 
+from backend.shared import tracing
+
 DEFAULT_MODEL = "gemini-flash-latest"
 CALL_SITE = "knowledge_agent"
 MAX_STEPS = 6
@@ -121,6 +123,14 @@ class ResearchAgent:
     def run_tool(self, name, args):
         """Modelin istedigi araci calistirir; proje her zaman ajaninki, hata metin olarak doner."""
         args = {k: v for k, v in (args or {}).items() if v not in (None, "", [])}
+        params = json.dumps(args, ensure_ascii=False)
+        with tracing.span(f"tool.{name}", tracing.TOOL, **{"tool.name": name, "tool.parameters": params,
+                                                           "input.value": tracing.clip(params)}) as span:
+            text = self._run_tool(name, args)
+            span.set("output.value", tracing.clip(text))
+            return text
+
+    def _run_tool(self, name, args):
         try:
             if name == "search":
                 allowed = {"query", "queries", "path_prefix", "modified_after"}
@@ -136,6 +146,21 @@ class ResearchAgent:
         return text[:MAX_TOOL_CHARS]
 
     def ask(self, question):
+        with tracing.span("agent.ask", tracing.AGENT, **{"input.value": tracing.clip(question),
+                                                         "rag.project": self.project}) as span:
+            result = self._ask(question)
+            span.update({
+                "output.value": tracing.clip(result.answer),
+                "rag.tool_calls": len(result.steps),
+                "rag.citations": result.citations,
+                "rag.says_not_found": result.says_not_found,
+                "llm.token_count.prompt": result.prompt_tokens,
+                "llm.token_count.completion": result.output_tokens,
+                "rag.cost_usd": cost_usd(result, self.model),
+            })
+            return result
+
+    def _ask(self, question):
         from google.genai import types
 
         from backend.shared import gemini_retry, gemini_usage
@@ -160,12 +185,18 @@ class ResearchAgent:
                 gemini_usage.log_usage(CALL_SITE, self.model, response)
                 return response
 
-            response = gemini_retry.call_with_retry(_call, pacing_key=CALL_SITE)
-            usage = response.usage_metadata
-            if usage is not None:
-                result.prompt_tokens += usage.prompt_token_count or 0
-                result.output_tokens += usage.candidates_token_count or 0
-            calls = response.function_calls or []
+            with tracing.span("gemini", tracing.LLM, **{"llm.model_name": self.model, "rag.step": step,
+                                                        "rag.tools_enabled": not final}) as span:
+                response = gemini_retry.call_with_retry(_call, pacing_key=CALL_SITE)
+                usage = response.usage_metadata
+                if usage is not None:
+                    result.prompt_tokens += usage.prompt_token_count or 0
+                    result.output_tokens += usage.candidates_token_count or 0
+                    span.update({"llm.token_count.prompt": usage.prompt_token_count,
+                                 "llm.token_count.completion": usage.candidates_token_count,
+                                 "llm.token_count.total": getattr(usage, "total_token_count", None)})
+                calls = response.function_calls or []
+                span.set("output.value", ", ".join(c.name for c in calls) if calls else tracing.clip(_answer_text(response)))
             if not calls or final:
                 result.answer = _answer_text(response)
                 if result.answer or final:
@@ -249,6 +280,14 @@ def main():
     parser.add_argument("--limit", type=int, default=0)
     args = parser.parse_args()
     service = KnowledgeService(Runtime())
+    tracing.init_tracing("rag-agent-eval" if args.eval else "rag-agent")
+    try:
+        return _run_cli(service, args, parser)
+    finally:
+        tracing.flush()
+
+
+def _run_cli(service, args, parser):
     if args.eval:
         return _evaluate(service, args.project or service.resolve_project(None), args.limit)
     if not args.question:

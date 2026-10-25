@@ -276,12 +276,15 @@ def main():
     from backend.knowledge.runtime import Runtime
     from backend.knowledge.service import KnowledgeService
     from backend.mcp.oauth import OAuthProvider
+    from backend.shared import tracing
     from backend.shared.paths import PROJECT_ROOT
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args()
     load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+    if tracing.init_tracing("rag-mcp"):
+        print("Izleme acik: Phoenix (rag-mcp projesi).", file=sys.stderr, flush=True)
     token = os.environ.get("MCP_HTTP_TOKEN", "")
     try:
         oauth = OAuthProvider(token, store_path=os.path.join(PROJECT_ROOT, "artifacts", "oauth", "store.json"))
