@@ -90,6 +90,9 @@ def aggregate(scores):
         by_type.setdefault(s["type"], []).append(s)
     summary["hit@3_by_type"] = {t: rate(items, lambda s: s["rank"] is not None and s["rank"] <= 3)
                                 for t, items in sorted(by_type.items())}
+    pooled = [s for s in answerable if "pool_hit" in s]
+    if pooled:
+        summary["pool_recall"] = rate(pooled, lambda s: s["pool_hit"])
     multihop = [s for s in answerable if s.get("hops_total")]
     if multihop:
         # Cok adimli soruda tek belge yetmez: tum adimlar ayni anda ilk k'da olmali.
@@ -118,10 +121,17 @@ def _gemini_client():
     return genai.Client(api_key=os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
 
 
+def pool_hit(record, pool_paths):
+    """Beklenen belgelerden biri cross-encoder'a giden aday havuzunda mi (belge duzeyinde). Reranker
+    havuzda olmayani one alamaz; getirme yollarinin farki burada gorunur."""
+    expected = {_norm_path(p) for p in record["expected_paths"]}
+    return any(_norm_path(p) in expected for p in pool_paths)
+
+
 def run_eval(project_name, golden_path=None, top_k=5, label="", max_per_source=None, decompose_questions=False,
-             runtime=None, verbose=True):
+             runtime=None, verbose=True, retriever=None):
     """Altin seti bir kez kosar, kaydi loga ekler ve ozeti dondurur (main ve gate.py kullanir)."""
-    from backend.knowledge import decompose, search
+    from backend.knowledge import decompose, search, store
     from backend.knowledge.runtime import Runtime
     from backend.knowledge.service import KnowledgeService
     from backend.shared import tracing
@@ -137,6 +147,18 @@ def run_eval(project_name, golden_path=None, top_k=5, label="", max_per_source=N
     search.search(client, embedder, reranker, "isinma", project=project, top_k=1)  # model yuklemesi olcume girmesin
     tracing.init_tracing("rag-eval")  # her soru Phoenix'te ayri iz; kacan sorular oradan incelenir
     gemini = _gemini_client() if decompose_questions else None
+    if retriever:
+        from backend.knowledge import m3
+
+        base_retriever = m3.make_retriever(retriever, m3.M3Heads(embedder))
+    else:
+        base_retriever = store.hybrid_search
+    pools = []
+
+    def capture(*args, **kwargs):  # havuzu (rerank oncesi adaylar) olcum icin saklar
+        pool = base_retriever(*args, **kwargs)
+        pools.append([c["path"] for c in pool])
+        return pool
 
     scores, latencies, chars = [], [], []
     for record in records:
@@ -146,12 +168,15 @@ def run_eval(project_name, golden_path=None, top_k=5, label="", max_per_source=N
                 "rag.expected_paths": record["expected_paths"] or None}) as span:
             start = time.perf_counter()
             subqueries = decompose.decompose(gemini, record["question"]) if gemini else None
+            pools.clear()
             results = search.search(client, embedder, reranker, record["question"], project=project, top_k=top_k,
-                                    subqueries=subqueries,
+                                    subqueries=subqueries, retriever=capture,
                                     **({"max_per_source": max_per_source} if max_per_source else {}))
             latencies.append(time.perf_counter() - start)
             chars.append(len(search.format_results(results)))
             score = score_record(record, results)
+            if score["answerable"]:
+                score["pool_hit"] = pool_hit(record, [p for pool in pools for p in pool])
             span.update({"rag.answerable": score["answerable"], "rag.hit_rank": score["rank"],
                          "rag.abstained": score["abstained"],
                          "rag.passed": (score["rank"] is not None and score["rank"] <= 3) if score["answerable"]
@@ -184,7 +209,7 @@ def run_eval(project_name, golden_path=None, top_k=5, label="", max_per_source=N
             delta = f"  (onceki {previous[key]:.2f})" if previous and key in previous else ""
             print(f"  {key:17} {summary[key]:.2f}{delta}")
         print(f"  hit@3 tur bazinda: {summary['hit@3_by_type']}")
-        for key in ("multihop_recall", "hit@3_by_origin"):
+        for key in ("pool_recall", "multihop_recall", "hit@3_by_origin"):
             if key in summary:
                 print(f"  {key}: {summary[key]}")
 
@@ -193,7 +218,7 @@ def run_eval(project_name, golden_path=None, top_k=5, label="", max_per_source=N
         f.write(json.dumps({"timestamp": datetime.now(timezone.utc).isoformat(), "label": label,
                             "golden_set": os.path.basename(golden_path),
                             "top_k": top_k, "max_per_source": max_per_source,
-                            "decompose": decompose_questions,
+                            "decompose": decompose_questions, "retriever": retriever or "default",
                             "summary": summary, "per_question": scores},
                            ensure_ascii=False) + "\n")
     if verbose:
@@ -211,11 +236,13 @@ def main():
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--label", default="", help="kosuya not (orn. 'baseline', 'bge-m3')")
     parser.add_argument("--max-per-source", type=int, default=None, help="belge basina en fazla sonuc (A/B icin)")
+    parser.add_argument("--retriever", default=None,
+                        help="aday toplama deneme yolu (m3.RETRIEVERS); once: python -m backend.knowledge.m3 build")
     parser.add_argument("--decompose", action="store_true",
                         help="soruyu Gemini ile parcalara bolup her parcayi ayri ara (sure parcalamayi da icerir)")
     args = parser.parse_args()
     run_eval(args.project, golden_path=args.golden_set, top_k=args.top_k, label=args.label,
-             max_per_source=args.max_per_source, decompose_questions=args.decompose)
+             max_per_source=args.max_per_source, decompose_questions=args.decompose, retriever=args.retriever)
 
 
 if __name__ == "__main__":
