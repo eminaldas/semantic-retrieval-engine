@@ -3,8 +3,14 @@
     python -m backend.knowledge.eval factprobe [--golden-set yol] [--top-k 5] [--label not]
 
 Altin set: knowledge_eval/<proje>.jsonl (gitignore'da; proje icerigi tasir). Her satir
-{"id", "type", "question", "expected_paths": [...], "expected_text": str|null}.
-expected_paths bos ise soru cevapsizdir: dogru davranis tum sonuclarin zayif isaretli olmasi.
+{"id", "type", "question", "expected_paths": [...], "expected_text": str|[str]|null}.
+expected_paths ve expected_text "herhangi biri" demektir: ayni bilgi birden cok belgede yaziliysa
+hepsi listelenir. expected_paths bos ise soru cevapsizdir: dogru davranis tum sonuclarin zayif
+isaretli olmasi. Istege bagli alanlar:
+  "hops": [{"paths": [...], "text": ...}, ...]  iki ya da daha fazla belgeyi birlestiren soru; her
+          adim ayri ayri ilk k sonucta bulunmali (multihop_recall)
+  "origin": "human" | "synthetic"  sentetik sorular insan sorularindan ayri raporlanir
+  "reviewed": "2026-10-25"  kaydin belgelere karsi son kontrol tarihi (belge degisirse yeniden bakilir)
 Gemini'ye dokunmaz; sadece getirmeyi olcer. Her kosu artifacts/knowledge_eval/<proje>.jsonl'a
 eklenir ve bir oncekiyle karsilastirilir."""
 
@@ -28,6 +34,7 @@ def _norm_path(path):
 def _norm_text(text):
     # Turkce kucuk harf: casefold "İ"yi "i̇" yapar, "ŞİMDİLİK" ile "şimdilik" eslesmez.
     text = unicodedata.normalize("NFC", text).replace("İ", "i").replace("I", "ı").lower()
+    text = re.sub(r"(\d),(\d)", r"\1.\2", text)  # Turkce ondalik virgul: "0,91" == "0.91"
     return re.sub(r"\s+", " ", text)
 
 
@@ -51,8 +58,13 @@ def score_record(record, results):
         return {"id": record["id"], "type": record["type"], "answerable": False, "rank": None,
                 "abstained": all_weak}
     rank = next((i for i, r in enumerate(results, start=1) if is_hit(record, r)), None)
-    return {"id": record["id"], "type": record["type"], "answerable": True, "rank": rank,
-            "abstained": all_weak}
+    score = {"id": record["id"], "type": record["type"], "answerable": True, "rank": rank,
+             "abstained": all_weak, "origin": record.get("origin", "human")}
+    if record.get("hops"):
+        hops = [{"expected_paths": h["paths"], "expected_text": h.get("text")} for h in record["hops"]]
+        score["hops_found"] = sum(1 for h in hops if any(is_hit(h, r) for r in results))
+        score["hops_total"] = len(hops)
+    return score
 
 
 def aggregate(scores):
@@ -78,6 +90,16 @@ def aggregate(scores):
         by_type.setdefault(s["type"], []).append(s)
     summary["hit@3_by_type"] = {t: rate(items, lambda s: s["rank"] is not None and s["rank"] <= 3)
                                 for t, items in sorted(by_type.items())}
+    multihop = [s for s in answerable if s.get("hops_total")]
+    if multihop:
+        # Cok adimli soruda tek belge yetmez: tum adimlar ayni anda ilk k'da olmali.
+        summary["multihop_recall"] = rate(multihop, lambda s: s["hops_found"] == s["hops_total"])
+    by_origin = {}
+    for s in answerable:
+        by_origin.setdefault(s.get("origin", "human"), []).append(s)
+    if len(by_origin) > 1:
+        summary["hit@3_by_origin"] = {o: rate(items, lambda s: s["rank"] is not None and s["rank"] <= 3)
+                                      for o, items in sorted(by_origin.items())}
     return summary
 
 
@@ -151,6 +173,9 @@ def main():
         delta = f"  (onceki {previous[key]:.2f})" if previous and key in previous else ""
         print(f"  {key:17} {summary[key]:.2f}{delta}")
     print(f"  hit@3 tur bazinda: {summary['hit@3_by_type']}")
+    for key in ("multihop_recall", "hit@3_by_origin"):
+        if key in summary:
+            print(f"  {key}: {summary[key]}")
 
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     with open(log_path, "a", encoding="utf-8") as f:
