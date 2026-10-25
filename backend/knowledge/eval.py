@@ -92,6 +92,7 @@ def main():
     from backend.knowledge import search
     from backend.knowledge.runtime import Runtime
     from backend.knowledge.service import KnowledgeService
+    from backend.shared import tracing
     from backend.shared.paths import PROJECT_ROOT
 
     parser = argparse.ArgumentParser(description="Proje aramasi altin set olcumu")
@@ -109,14 +110,23 @@ def main():
     project = KnowledgeService(runtime).resolve_project(args.project)
     client, embedder, reranker = runtime.client(), runtime.embedder(), runtime.reranker()
     search.search(client, embedder, reranker, "isinma", project=project, top_k=1)  # model yuklemesi olcume girmesin
+    tracing.init_tracing("rag-eval")  # her soru Phoenix'te ayri iz; kacan sorular oradan incelenir
 
     scores, latencies, chars = [], [], []
     for record in records:
-        start = time.perf_counter()
-        results = search.search(client, embedder, reranker, record["question"], project=project, top_k=args.top_k)
-        latencies.append(time.perf_counter() - start)
-        chars.append(len(search.format_results(results)))
-        score = score_record(record, results)
+        with tracing.span("eval_case", tracing.CHAIN, **{
+                "input.value": record["question"], "metadata": {"id": record["id"], "type": record["type"],
+                                                                "label": args.label, "project": project},
+                "rag.expected_paths": record["expected_paths"] or None}) as span:
+            start = time.perf_counter()
+            results = search.search(client, embedder, reranker, record["question"], project=project, top_k=args.top_k)
+            latencies.append(time.perf_counter() - start)
+            chars.append(len(search.format_results(results)))
+            score = score_record(record, results)
+            span.update({"rag.answerable": score["answerable"], "rag.hit_rank": score["rank"],
+                         "rag.abstained": score["abstained"],
+                         "rag.passed": (score["rank"] is not None and score["rank"] <= 3) if score["answerable"]
+                         else score["abstained"]})
         score["top"] = [f"{r['path']} {r['rerank_score']:.2f}" for r in results[:3]]
         score["top1_score"] = results[0]["rerank_score"] if results else None
         scores.append(score)
@@ -148,6 +158,7 @@ def main():
                             "top_k": args.top_k, "summary": summary, "per_question": scores},
                            ensure_ascii=False) + "\n")
     print(f"\nKayit: {log_path}")
+    tracing.flush()
 
 
 if __name__ == "__main__":

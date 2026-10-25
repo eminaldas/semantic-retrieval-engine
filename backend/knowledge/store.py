@@ -122,6 +122,21 @@ def hybrid_search(client, dense_query, query_text, flt=None, limit=30, prefetch_
     return [dict(hit.payload, fusion_score=hit.score) for hit in result.points]
 
 
+def branch_ranks(client, dense_query, query_text, flt=None, limit=60):
+    """Izleme icin: hybrid_search'un iki kolu ayri ayri hangi parcalari getirdi (chunk_id listesi,
+    en iyiden). RRF Qdrant icinde birlestigi icin yonlendirme ancak boyle gorunur; sadece
+    izleme acikken cagrilir (yerel Qdrant'ta tek toplu istek, birkac ms)."""
+    q_indices, q_values = bm25.query_sparse_vector(query_text)
+    requests = [models.QueryRequest(query=list(map(float, dense_query)), using=DENSE, filter=flt, limit=limit,
+                                    with_payload=["chunk_id"])]
+    if q_indices:
+        requests.append(models.QueryRequest(query=models.SparseVector(indices=q_indices, values=q_values), using=SPARSE,
+                                            filter=flt, limit=limit, with_payload=["chunk_id"]))
+    responses = client.query_batch_points(collection_name=COLLECTION_NAME, requests=requests)
+    lists = [[hit.payload["chunk_id"] for hit in r.points] for r in responses]
+    return {"dense": lists[0], "sparse": lists[1] if len(lists) > 1 else []}
+
+
 def scroll_all(client, flt, fields):
     """Filtreye uyan tum noktalarin istenen payload alanlari (sayfali scroll)."""
     rows, offset = [], None

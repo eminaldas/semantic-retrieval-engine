@@ -91,10 +91,30 @@ prompt makes "not found" the first sentence, which is the only place the scorer 
 The five remaining misses give sensible answers that cite a different document than the gold
 set expects.
 
+## Tracing
+
+Every search, MCP tool call, agent step and eval question is an OpenTelemetry trace in the
+OpenInference format, sent to a local [Arize Phoenix](https://github.com/arize-ai/phoenix)
+(`docker compose up -d phoenix`, UI at http://localhost:6006). A search trace shows:
+
+| Span | What it records |
+|---|---|
+| `tool.<name>` | tool, arguments, output size, input or internal error |
+| `search` | project, filters, top-1/top-2 score, margin to the threshold, "not found" decision |
+| `embed` | embedding model |
+| `hybrid_retrieve` | candidate pool with each chunk's dense and BM25 rank, how many came from one branch only |
+| `rerank` | reranker input and output, where the new top-1 sat in the RRF order, mean rank shift, demoted superseded notes |
+| `gemini` (agent) | model, step, tokens, requested tools |
+
+Traces go to Phoenix projects `rag-mcp`, `rag-agent`, `rag-eval` and `rag-agent-eval`, so a failed
+eval question can be opened next to live queries. Phoenix's own MCP endpoint (`/mcp`) lets Claude
+query these traces. `RAG_TRACING=0` turns tracing off; `RAG_TRACE_CONTENT=0` keeps chunk text and
+queries out of the spans. When tracing is off the search path does no extra work.
+
 ## Quick start
 
 ```bash
-docker compose up -d qdrant                  # Neo4j is only needed for the GraphRAG core
+docker compose up -d qdrant phoenix          # Neo4j is only needed for the GraphRAG core
 python -m venv .venv && .venv/Scripts/pip install -r backend/requirements.txt
 cp .env.example .env                         # GEMINI_API_KEY (optional), MCP_HTTP_TOKEN
 cp knowledge_projects.example.json knowledge_projects.json   # point "root" at your project
@@ -111,6 +131,7 @@ Per-project options in `knowledge_projects.json`: `include`/`exclude` globs, `co
 ```
 backend/knowledge/   project memory: bm25, store (Qdrant), search, sync, watcher, contextual, agent, eval
 backend/mcp/         MCP server (stdio + HTTP), OAuth 2.1 provider
+backend/shared/      tracing (OpenTelemetry -> Phoenix), Gemini retry and cost log
 backend/pipeline/    GraphRAG core: chunker, Gemini extractor, Neo4j graph writer, self-correction
 backend/query/       GraphRAG queries: entity linking, path search, PageRank risk ranking
 backend/api/         FastAPI dashboard;  frontend/  React UI

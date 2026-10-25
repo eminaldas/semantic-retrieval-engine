@@ -8,6 +8,7 @@ from collections import Counter
 from datetime import datetime, timezone
 
 from backend.knowledge import projects, search, store, sync
+from backend.shared import tracing
 
 MAX_BATCH_QUERIES = 4
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -101,7 +102,11 @@ class KnowledgeService:
     def _search_one(self, query, top_k, options):
         results = search.search(self.runtime.client(), self.runtime.embedder(), self.runtime.reranker(), query,
                                 top_k=top_k, **options)
-        return self.mark_stale(results)
+        results = self.mark_stale(results)
+        stale = [f"{r['path']}: {r['stale']}" for r in results if r.get("stale")]
+        if stale:
+            tracing.event("stale_results", query=tracing.clip(query), results=stale)
+        return results
 
     def mark_stale(self, results):
         """Sonucun dosyasi indeksten sonra degismis ya da silinmisse 'stale' alanina nedenini yazar."""

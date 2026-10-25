@@ -9,6 +9,8 @@ bir pencere gider (small-to-big); ayni yere dusen sonuclar tek pencerede birlesi
 import re
 
 from backend.knowledge import store
+from backend.knowledge.runtime import CROSS_ENCODER_MODEL_NAME, EMBEDDING_MODEL_NAME
+from backend.shared import tracing
 
 # bge-reranker-v2-m3 skoru 0-1 arasi. factprobe altin setinde (2026-10-22, 42 cevapli + 12
 # alakasiz soru, Gemini baglam cumleleriyle) alakasizlarin en iyi parcasi <= 0.041, cevaplilarinki
@@ -102,18 +104,97 @@ def demote_superseded(ranked, factor=SUPERSEDED_FACTOR):
 
 def search(qdrant_client, embedding_model, cross_encoder, query, project=None, doc_type=None, top_k=5, candidates=20,
            threshold=RELEVANCE_THRESHOLD, path_prefix=None, modified_after=None, modified_before=None):
-    dense_query = embedding_model.encode(query)
-    flt = store.project_filter(project=project, doc_type=doc_type, path_prefix=path_prefix,
-                               modified_after=modified_after, modified_before=modified_before)
-    pool = store.hybrid_search(qdrant_client, dense_query, query, flt=flt, limit=candidates)
-    # Pencereler birlesince sonuc azalir; birkac yedek aday tutulur.
-    ranked = demote_superseded(rerank(cross_encoder, query, pool, top_k + 3))
-    for item in ranked:
-        item["low_confidence"] = item["rerank_score"] < threshold
-    wanted = {n for r in ranked for n in neighbor_ids(r["chunk_id"])} - {r["chunk_id"] for r in ranked}
-    chunks_by_id = fetch_chunks(qdrant_client, sorted(wanted))
-    chunks_by_id.update({r["chunk_id"]: r for r in ranked})
-    return build_windows(ranked, chunks_by_id)[:top_k]
+    filters = {k: v for k, v in dict(project=project, doc_type=doc_type, path_prefix=path_prefix,
+                                     modified_after=modified_after, modified_before=modified_before).items() if v}
+    with tracing.span("search", tracing.CHAIN, **{"input.value": tracing.clip(query), "metadata": filters,
+                                                  "rag.project": project, "rag.top_k": top_k,
+                                                  "rag.threshold": threshold}) as root:
+        with tracing.span("embed", tracing.EMBEDDING, **{"embedding.model_name": EMBEDDING_MODEL_NAME}):
+            dense_query = embedding_model.encode(query)
+        flt = store.project_filter(project=project, doc_type=doc_type, path_prefix=path_prefix,
+                                   modified_after=modified_after, modified_before=modified_before)
+        with tracing.span("hybrid_retrieve", tracing.RETRIEVER, **{"input.value": tracing.clip(query)}) as span:
+            pool = store.hybrid_search(qdrant_client, dense_query, query, flt=flt, limit=candidates)
+            branch_meta = _trace_branches(span, qdrant_client, dense_query, query, flt, pool)
+            span.update(tracing.document_attributes("retrieval.documents", pool, "fusion_score", branch_meta))
+        with tracing.span("rerank", tracing.RERANKER, **{"reranker.model_name": CROSS_ENCODER_MODEL_NAME,
+                                                         "reranker.query": tracing.clip(query),
+                                                         "reranker.top_k": top_k + 3}) as span:
+            # Pencereler birlesince sonuc azalir; birkac yedek aday tutulur.
+            ranked = demote_superseded(rerank(cross_encoder, query, pool, top_k + 3))
+            for item in ranked:
+                item["low_confidence"] = item["rerank_score"] < threshold
+            if tracing.enabled():
+                span.update(tracing.document_attributes("reranker.input_documents", pool, "fusion_score"))
+                span.update(tracing.document_attributes("reranker.output_documents", ranked, "rerank_score"))
+                span.update(rerank_shift(pool, ranked))
+        wanted = {n for r in ranked for n in neighbor_ids(r["chunk_id"])} - {r["chunk_id"] for r in ranked}
+        chunks_by_id = fetch_chunks(qdrant_client, sorted(wanted))
+        chunks_by_id.update({r["chunk_id"]: r for r in ranked})
+        windows = build_windows(ranked, chunks_by_id)
+        results = windows[:top_k]
+        root.update(outcome_attributes(ranked, windows, results, threshold))
+        return results
+
+
+def _trace_branches(span, client, dense_query, query, flt, pool):
+    """Izleme acikken dense ve BM25 kollarinin ayri siralarini span'e yazar; hata aramayi bozmaz."""
+    if not tracing.enabled():
+        return None
+    try:
+        branches = store.branch_ranks(client, dense_query, query, flt=flt)
+    except Exception as exc:
+        span.set("rag.branch_error", f"{type(exc).__name__}: {exc}")
+        return None
+    attrs, meta = branch_routing(branches, pool)
+    span.update(attrs)
+    return meta
+
+
+def branch_routing(branches, pool):
+    """Aday havuzundaki her parcanin dense/BM25 sirasi ve hangi koldan geldigi.
+    Doner: (span ozetleri, chunk_id -> {"dense_rank", "bm25_rank"})."""
+    dense = {cid: i for i, cid in enumerate(branches["dense"], start=1)}
+    sparse = {cid: i for i, cid in enumerate(branches["sparse"], start=1)}
+    meta, counts = {}, {"both": 0, "dense_only": 0, "bm25_only": 0}
+    for item in pool:
+        cid = item["chunk_id"]
+        d, s = dense.get(cid), sparse.get(cid)
+        meta[cid] = {"dense_rank": d, "bm25_rank": s}
+        if d and s:
+            counts["both"] += 1
+        elif d:
+            counts["dense_only"] += 1
+        elif s:
+            counts["bm25_only"] += 1
+    return {"rag.pool_size": len(pool), "rag.bm25_terms": bool(branches["sparse"]),
+            **{f"rag.pool_{k}": v for k, v in counts.items()}}, meta
+
+
+def rerank_shift(pool, ranked):
+    """Reranker'in RRF sirasini ne kadar degistirdigi: ilk sonucun RRF'teki yeri ve ortalama kayma."""
+    fusion_rank = {c["chunk_id"]: i for i, c in enumerate(pool, start=1)}
+    shifts = [abs(fusion_rank.get(r["chunk_id"], len(pool)) - i) for i, r in enumerate(ranked, start=1)]
+    return {
+        "rag.top1_fusion_rank": fusion_rank.get(ranked[0]["chunk_id"]) if ranked else None,
+        "rag.mean_rank_shift": round(sum(shifts) / len(shifts), 2) if shifts else None,
+        "rag.superseded_demoted": sum(1 for r in ranked if r.get("superseded_by")),
+    }
+
+
+def outcome_attributes(ranked, windows, results, threshold):
+    """Aramanin sonucu: skorlar, esige mesafe, 'bulunamadi' karari, donen kaynaklar."""
+    scores = [r["rerank_score"] for r in ranked]
+    return {
+        "rag.result_count": len(results),
+        "rag.top1_score": scores[0] if scores else None,
+        "rag.top2_score": scores[1] if len(scores) > 1 else None,
+        "rag.threshold_margin": round(scores[0] - threshold, 4) if scores else None,
+        "rag.below_threshold": sum(1 for s in scores if s < threshold),
+        "rag.abstained": all(r["low_confidence"] for r in results),
+        "rag.windows_merged": len(ranked) - len(windows),  # komsu pencereye dusup birlesen sonuc
+        "output.value": "\n".join(f"{r['path']} | {r.get('location', '')} | {r['rerank_score']:.3f}" for r in results),
+    }
 
 
 def result_flags(r):
