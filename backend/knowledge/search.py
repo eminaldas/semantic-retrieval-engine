@@ -136,11 +136,11 @@ def interleave(ranked_lists, limit):
 
 
 def _retrieve_and_rerank(qdrant_client, embedding_model, cross_encoder, query, flt, candidates, limit,
-                         max_per_source):
+                         max_per_source, retriever):
     with tracing.span("embed", tracing.EMBEDDING, **{"embedding.model_name": EMBEDDING_MODEL_NAME}):
         dense_query = embedding_model.encode(query)
     with tracing.span("hybrid_retrieve", tracing.RETRIEVER, **{"input.value": tracing.clip(query)}) as span:
-        pool = store.hybrid_search(qdrant_client, dense_query, query, flt=flt, limit=candidates)
+        pool = retriever(qdrant_client, dense_query, query, flt=flt, limit=candidates)
         branch_meta = _trace_branches(span, qdrant_client, dense_query, query, flt, pool)
         span.update(tracing.document_attributes("retrieval.documents", pool, "fusion_score", branch_meta))
     with tracing.span("rerank", tracing.RERANKER, **{"reranker.model_name": CROSS_ENCODER_MODEL_NAME,
@@ -158,9 +158,11 @@ def _retrieve_and_rerank(qdrant_client, embedding_model, cross_encoder, query, f
 
 def search(qdrant_client, embedding_model, cross_encoder, query, project=None, doc_type=None, top_k=5, candidates=20,
            threshold=RELEVANCE_THRESHOLD, path_prefix=None, modified_after=None, modified_before=None,
-           max_per_source=MAX_PER_SOURCE, subqueries=None):
+           max_per_source=MAX_PER_SOURCE, subqueries=None, retriever=None):
     """subqueries: soru parcalari (decompose.decompose). Verilirse soru ve her parca ayri getirilip
-    kendi sorgusuna gore rerank edilir, sonra sirayla birlestirilir."""
+    kendi sorgusuna gore rerank edilir, sonra sirayla birlestirilir.
+    retriever: aday toplama (client, dense_query, query, flt, limit) -> liste; varsayilan
+    store.hybrid_search. Deneme yollari icin (m3.make_retriever)."""
     filters = {k: v for k, v in dict(project=project, doc_type=doc_type, path_prefix=path_prefix,
                                      modified_after=modified_after, modified_before=modified_before).items() if v}
     queries = [query] + [q for q in (subqueries or []) if q.strip() and q.strip() != query.strip()]
@@ -172,7 +174,8 @@ def search(qdrant_client, embedding_model, cross_encoder, query, project=None, d
                                    modified_after=modified_after, modified_before=modified_before)
         # Pencereler birlesince sonuc azalir; birkac yedek aday tutulur.
         ranked_lists = [_retrieve_and_rerank(qdrant_client, embedding_model, cross_encoder, q, flt, candidates,
-                                             top_k + 3, max_per_source) for q in queries]
+                                             top_k + 3, max_per_source, retriever or store.hybrid_search)
+                        for q in queries]
         ranked = ranked_lists[0] if len(ranked_lists) == 1 else interleave(ranked_lists, top_k + 3)
         for item in ranked:
             item["low_confidence"] = item["rerank_score"] < threshold
