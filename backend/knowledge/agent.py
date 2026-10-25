@@ -8,7 +8,8 @@ ayri projeler yanlislikla karismasin).
 
 Kullanim:
   python -m backend.knowledge.agent "soru" [--project factprobe]
-  python -m backend.knowledge.agent --eval [--limit 20] [--judge]   # altin sette kaynak isabeti (+ LLM yargic)"""
+  python -m backend.knowledge.agent --eval [--limit 20] [--judge]   # altin sette kaynak isabeti (+ LLM yargic)
+  python -m backend.knowledge.agent --eval --long-context [--judge]  # arama yok, tum belgeler baglamda (longctx)"""
 
 import argparse
 import json
@@ -62,6 +63,7 @@ class AgentResult:
     evidence: list = field(default_factory=list)  # modele giden arac ciktilari; yargic bunlara bakar
     prompt_tokens: int = 0
     output_tokens: int = 0
+    cached_tokens: int = 0  # prompt_tokens'in onbellekten okunan kismi (~%10 fiyat)
     seconds: float = 0.0
 
     @property
@@ -226,7 +228,7 @@ class ResearchAgent:
 def cost_usd(result, model=DEFAULT_MODEL):
     from backend.shared.gemini_usage import _estimate_cost
 
-    return _estimate_cost(model, result.prompt_tokens, result.output_tokens)
+    return _estimate_cost(model, int(result.prompt_tokens - 0.9 * result.cached_tokens), result.output_tokens)
 
 
 def score_answer(record, result):
@@ -262,13 +264,13 @@ def judge_summary(verdicts):
             "judge_cost_usd": round(cost, 4)}
 
 
-def _evaluate(service, project, limit, use_judge=False, golden_path=None):
+def _evaluate(service, project, limit, use_judge=False, golden_path=None, agent=None, mode="agent"):
     from backend.knowledge import eval as golden
     from backend.shared.paths import PROJECT_ROOT
 
     records = golden.load_golden_set(golden_path or os.path.join(PROJECT_ROOT, "knowledge_eval", f"{project}.jsonl"))
     records = records[:limit] if limit else records
-    agent = ResearchAgent(service, project=project)
+    agent = agent or ResearchAgent(service, project=project)
     rows, totals = [], {"cite": [0, 0], "abstain": [0, 0]}
     cost, seconds, steps, verdicts = 0.0, [], [], []
     for record in records:
@@ -299,7 +301,7 @@ def _evaluate(service, project, limit, use_judge=False, golden_path=None):
     out = os.path.join(PROJECT_ROOT, "artifacts", "knowledge_eval", f"{project}_agent.jsonl")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "a", encoding="utf-8") as f:
-        f.write(json.dumps({"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "model": DEFAULT_MODEL,
+        f.write(json.dumps({"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "model": DEFAULT_MODEL, "mode": mode,
                             "summary": summary, "rows": rows}, ensure_ascii=False) + "\n")
 
 
@@ -314,6 +316,8 @@ def main():
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--judge", action="store_true", help="cevaplari LLM yargica da puanlat (grounded/correct)")
     parser.add_argument("--golden-set", default=None)
+    parser.add_argument("--long-context", action="store_true",
+                        help="arama yerine projenin tum belgelerini tek seferde modele ver (taban cizgisi)")
     args = parser.parse_args()
     service = KnowledgeService(Runtime())
     tracing.init_tracing("rag-agent-eval" if args.eval else "rag-agent")
@@ -323,7 +327,37 @@ def main():
         tracing.flush()
 
 
+def _long_context_reader(service, project):
+    from backend.knowledge import goldgen
+    from backend.knowledge.longctx import MAX_CORPUS_TOKENS, LongContextReader
+
+    reader = LongContextReader(goldgen.load_documents(service.runtime.client(), project))
+    tokens = reader.corpus_tokens()
+    full = cost_usd(AgentResult("", prompt_tokens=tokens)) or 0
+    print(f"Uzun baglam: {len(reader.docs)} belge, {tokens} token; soru basina ~${full:.3f} "
+          f"(onbellekle ~${full / 10:.4f} + saatlik onbellek ucreti)", file=sys.stderr)
+    if tokens > MAX_CORPUS_TOKENS:
+        raise SystemExit(f"Korpus {tokens} token, sinir {MAX_CORPUS_TOKENS}: bu proje tek baglama sigmiyor.")
+    return reader
+
+
 def _run_cli(service, args, parser):
+    if args.long_context:
+        project = args.project or service.resolve_project(None)
+        reader = _long_context_reader(service, project)
+        try:
+            if args.eval:
+                return _evaluate(service, project, args.limit, use_judge=args.judge, golden_path=args.golden_set,
+                                 agent=reader, mode="long-context")
+            if not args.question:
+                parser.error("soru ya da --eval gerekli")
+            result = reader.ask(args.question)
+            print(result.answer)
+            print(f"\n[{result.seconds:.1f} sn, {result.prompt_tokens}+{result.output_tokens} token "
+                  f"({result.cached_tokens} onbellekten), ~${cost_usd(result) or 0:.4f}]", file=sys.stderr)
+            return None
+        finally:
+            reader.close()
     if args.eval:
         return _evaluate(service, args.project or service.resolve_project(None), args.limit,
                          use_judge=args.judge, golden_path=args.golden_set)
