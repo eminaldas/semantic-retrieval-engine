@@ -122,6 +122,7 @@ def main():
     parser.add_argument("--golden-set", default=None)
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--label", default="", help="kosuya not (orn. 'baseline', 'bge-m3')")
+    parser.add_argument("--max-per-source", type=int, default=None, help="belge basina en fazla sonuc (A/B icin)")
     args = parser.parse_args()
 
     golden_path = args.golden_set or os.path.join(PROJECT_ROOT, "knowledge_eval", f"{args.project}.jsonl")
@@ -141,7 +142,8 @@ def main():
                                                                 "label": args.label, "project": project},
                 "rag.expected_paths": record["expected_paths"] or None}) as span:
             start = time.perf_counter()
-            results = search.search(client, embedder, reranker, record["question"], project=project, top_k=args.top_k)
+            results = search.search(client, embedder, reranker, record["question"], project=project, top_k=args.top_k,
+                                    **({"max_per_source": args.max_per_source} if args.max_per_source else {}))
             latencies.append(time.perf_counter() - start)
             chars.append(len(search.format_results(results)))
             score = score_record(record, results)
@@ -180,7 +182,8 @@ def main():
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(json.dumps({"timestamp": datetime.now(timezone.utc).isoformat(), "label": args.label,
-                            "top_k": args.top_k, "summary": summary, "per_question": scores},
+                            "top_k": args.top_k, "max_per_source": args.max_per_source,
+                            "summary": summary, "per_question": scores},
                            ensure_ascii=False) + "\n")
     print(f"\nKayit: {log_path}")
     tracing.flush()
