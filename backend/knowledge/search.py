@@ -21,6 +21,9 @@ WINDOW_CHARS = 700  # sonuc basina pencere; eslesen parca bundan uzunsa tek basi
 WINDOW_RADIUS = 3  # her yone en fazla kac komsu parca
 MAX_OUTPUT_CHARS = 4000  # tum cevabin butcesi; en az bir sonuc her zaman gider
 SUPERSEDED_FACTOR = 0.5  # yerine yeni not yazilmis notun skoru bu katsayiyla carpilir
+# Bir belgeden en fazla kac sonuc one alinir; None = sinir yok. Iki belgeyi birlestiren sorularda
+# ayni belgenin parcalari ilk sonuclari doldurup ikinci belgeyi disarida birakiyordu.
+MAX_PER_SOURCE = None
 
 _LINES_RE = re.compile(r"(\d+)\s*-\s*(\d+)")
 
@@ -102,8 +105,26 @@ def demote_superseded(ranked, factor=SUPERSEDED_FACTOR):
     return sorted(ranked, key=lambda r: r["rerank_score"], reverse=True)
 
 
+def diversify(ranked, max_per_source, limit):
+    """Sirayi bozmadan her belgeden en fazla max_per_source sonuc one alir; yer kalirsa elenenler
+    sona eklenir, yani sonuc sayisi hic azalmaz. Doner: (liste, one alinmayan sonuc sayisi)."""
+    if not max_per_source:
+        return ranked[:limit], 0
+    kept, held, counts = [], [], {}
+    for item in ranked:
+        key = item.get("path")
+        if counts.get(key, 0) < max_per_source:
+            kept.append(item)
+            counts[key] = counts.get(key, 0) + 1
+        else:
+            held.append(item)
+    pushed = sum(1 for item in held if item in ranked[:limit])
+    return (kept + held)[:limit], pushed
+
+
 def search(qdrant_client, embedding_model, cross_encoder, query, project=None, doc_type=None, top_k=5, candidates=20,
-           threshold=RELEVANCE_THRESHOLD, path_prefix=None, modified_after=None, modified_before=None):
+           threshold=RELEVANCE_THRESHOLD, path_prefix=None, modified_after=None, modified_before=None,
+           max_per_source=MAX_PER_SOURCE):
     filters = {k: v for k, v in dict(project=project, doc_type=doc_type, path_prefix=path_prefix,
                                      modified_after=modified_after, modified_before=modified_before).items() if v}
     with tracing.span("search", tracing.CHAIN, **{"input.value": tracing.clip(query), "metadata": filters,
@@ -121,7 +142,9 @@ def search(qdrant_client, embedding_model, cross_encoder, query, project=None, d
                                                          "reranker.query": tracing.clip(query),
                                                          "reranker.top_k": top_k + 3}) as span:
             # Pencereler birlesince sonuc azalir; birkac yedek aday tutulur.
-            ranked = demote_superseded(rerank(cross_encoder, query, pool, top_k + 3))
+            ranked, pushed = diversify(demote_superseded(rerank(cross_encoder, query, pool, len(pool))),
+                                       max_per_source, top_k + 3)
+            span.set("rag.max_per_source", max_per_source).set("rag.diversity_pushed", pushed)
             for item in ranked:
                 item["low_confidence"] = item["rerank_score"] < threshold
             if tracing.enabled():

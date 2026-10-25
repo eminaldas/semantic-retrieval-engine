@@ -78,3 +78,23 @@ class TestFormatResults:
 
     def test_no_results(self):
         assert "bulunamadi" in search.format_results([])
+
+
+class TestDiversify:
+    def _r(self, path, n):
+        return {"path": path, "chunk_id": f"{path}#{n:04d}"}
+
+    def test_cap_pulls_second_document_forward_without_losing_results(self):
+        ranked = [self._r("A.md", 1), self._r("A.md", 2), self._r("A.md", 3), self._r("B.md", 1), self._r("C.md", 1)]
+        out, pushed = search.diversify(ranked, max_per_source=2, limit=4)
+        assert [r["chunk_id"] for r in out] == ["A.md#0001", "A.md#0002", "B.md#0001", "C.md#0001"]
+        assert pushed == 1  # A.md#0003 ilk 4'teydi, disari itildi
+
+    def test_backfills_when_only_one_document(self):
+        ranked = [self._r("A.md", i) for i in range(1, 5)]
+        out, _ = search.diversify(ranked, max_per_source=1, limit=3)
+        assert len(out) == 3 and out[0]["chunk_id"] == "A.md#0001"
+
+    def test_no_cap_is_plain_truncation(self):
+        ranked = [self._r("A.md", i) for i in range(1, 5)]
+        assert search.diversify(ranked, None, 2) == (ranked[:2], 0)

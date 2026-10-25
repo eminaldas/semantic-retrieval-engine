@@ -54,6 +54,19 @@ TOOLS = [
         },
     },
     {
+        "name": "ask",
+        "description": ("Soruyu ayri bir arastirma ajani (Gemini) belgelerde arayip okuyarak cevaplar ve kaynak gosterir; "
+                        "belgelerde yoksa 'Belgelerde bulamadim' der. Birden cok belgeyi birlestiren ya da uzun okuma "
+                        "gerektiren sorularda, baglamini parcalarla doldurmak istemediginde kullan. ~10 sn surer ve "
+                        "Gemini ucreti vardir; tek bir olguyu bulmak icin search daha hizli. Cevaptaki kaynaklari "
+                        "kullaniciya aynen aktar."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"question": {"type": "string", "description": "Dogal dilde soru"}, "project": _PROJECT},
+            "required": ["question"],
+        },
+    },
+    {
         "name": "overview",
         "description": ("Projenin haritasi: klasorler, son degisen belgeler, son notlar. Projeyi ilk kez "
                         "soruyorsan ya da hangi belgenin nerede oldugunu bilmiyorsan search'ten once cagir."),

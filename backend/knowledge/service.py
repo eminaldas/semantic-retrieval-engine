@@ -41,6 +41,7 @@ class KnowledgeService:
         self.notes_dir = notes_dir
         self.sync_lock = threading.Lock()  # elle sync, add_note ve izleyici ayni anda indekslemesin
         self.last_sync = {}  # proje -> (zaman, ozet); index_status gosterir
+        self.agent_factory = None  # ask araci; testler sahte ajan verir
 
     def _config(self):
         return self.config_loader()
@@ -98,6 +99,22 @@ class KnowledgeService:
         sections = [f"## Soru {i}: {q}\n\n{search.format_results(self._search_one(q, top_k, options), max_chars=budget)}"
                     for i, q in enumerate(batch, start=1)]
         return "\n\n======\n\n".join(sections)
+
+    def ask(self, question, project=None):
+        """Arastirma ajani (Gemini) soruyu kendi arayip okuyarak cevaplar; Claude'a parcalar yerine
+        kaynakli kisa bir cevap doner. Altin sette kaynak isabeti 1.00, cevapsiz soruda 'bulamadim'
+        1.00 (2026-10-25); soru basina ~10 sn ve ~0.004 $."""
+        from backend.knowledge.agent import ResearchAgent, cost_usd
+
+        if not question or not question.strip():
+            raise ValueError("question bos olamaz")
+        if self.agent_factory is None:
+            self.agent_factory = ResearchAgent
+        result = self.agent_factory(self, project=project).ask(question)
+        sources = ", ".join(result.citations) or "yok"
+        footer = (f"\n\n[Kaynaklar: {sources} · {len(result.steps)} arama/okuma · {result.seconds:.0f} sn"
+                  f" · ~${cost_usd(result) or 0:.4f}]")
+        return (result.answer or "Cevap uretilemedi.") + footer
 
     def _search_one(self, query, top_k, options):
         results = search.search(self.runtime.client(), self.runtime.embedder(), self.runtime.reranker(), query,

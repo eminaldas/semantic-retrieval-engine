@@ -40,7 +40,8 @@ flowchart LR
 
 ### MCP tools
 
-`search` (filters: folder or file, date range, doc type; 2-4 questions per call) · `overview` ·
+`search` (filters: folder or file, date range, doc type; 2-4 questions per call) · `ask` (the research
+agent answers with citations or says it is not in the documents) · `overview` ·
 `list_documents` · `get_document` · `add_note` (can supersede an older note) · `add_document` ·
 `index_status` (git-status style: new, changed, deleted) · `sync_project` · `list_projects`
 
