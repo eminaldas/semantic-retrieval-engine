@@ -1,0 +1,23 @@
+#!/bin/sh
+# Push oncesi gerileme kapisi (backend/knowledge/gate.py). Kurulum: git config core.hooksPath tools/hooks
+# Sadece arama kodunu (backend/knowledge, backend/shared) degistiren push'larda calisir (~1-2 dk).
+# Bilerek atlamak icin: git push --no-verify
+
+zero=0000000000000000000000000000000000000000
+run=0
+while read local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue          # dal silme
+    if [ "$remote_sha" = "$zero" ]; then
+        run=1                                       # yeni dal: karsilastiracak taban yok
+    elif git diff --name-only "$remote_sha" "$local_sha" 2>/dev/null | grep -qE '^backend/(knowledge|shared)/'; then
+        run=1
+    fi
+done
+[ "$run" = 1 ] || exit 0
+
+root=$(git rev-parse --show-toplevel)
+py="$root/.venv/Scripts/python.exe"
+[ -x "$py" ] || py="$root/.venv/bin/python"
+[ -x "$py" ] || py=python
+echo "Gerileme kapisi calisiyor (altin setler)..."
+cd "$root" && PYTHONIOENCODING=utf-8 "$py" -m backend.knowledge.gate
