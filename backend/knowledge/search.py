@@ -122,35 +122,60 @@ def diversify(ranked, max_per_source, limit):
     return (kept + held)[:limit], pushed
 
 
+def interleave(ranked_lists, limit):
+    """Parca sorgularin siralarini sirayla birlestirir (once her listenin 1.'si, sonra 2.'si...);
+    ayni parca bir kez girer. Boylece her sorgunun en iyi sonucu ilk siralarda yer alir; skorlar
+    farkli sorgulara gore oldugu icin tek siraya dizilmez."""
+    merged, seen = [], set()
+    for row in range(max((len(r) for r in ranked_lists), default=0)):
+        for ranked in ranked_lists:
+            if row < len(ranked) and ranked[row]["chunk_id"] not in seen:
+                seen.add(ranked[row]["chunk_id"])
+                merged.append(ranked[row])
+    return merged[:limit]
+
+
+def _retrieve_and_rerank(qdrant_client, embedding_model, cross_encoder, query, flt, candidates, limit,
+                         max_per_source):
+    with tracing.span("embed", tracing.EMBEDDING, **{"embedding.model_name": EMBEDDING_MODEL_NAME}):
+        dense_query = embedding_model.encode(query)
+    with tracing.span("hybrid_retrieve", tracing.RETRIEVER, **{"input.value": tracing.clip(query)}) as span:
+        pool = store.hybrid_search(qdrant_client, dense_query, query, flt=flt, limit=candidates)
+        branch_meta = _trace_branches(span, qdrant_client, dense_query, query, flt, pool)
+        span.update(tracing.document_attributes("retrieval.documents", pool, "fusion_score", branch_meta))
+    with tracing.span("rerank", tracing.RERANKER, **{"reranker.model_name": CROSS_ENCODER_MODEL_NAME,
+                                                     "reranker.query": tracing.clip(query),
+                                                     "reranker.top_k": limit}) as span:
+        ranked, pushed = diversify(demote_superseded(rerank(cross_encoder, query, pool, len(pool))),
+                                   max_per_source, limit)
+        span.set("rag.max_per_source", max_per_source).set("rag.diversity_pushed", pushed)
+        if tracing.enabled():
+            span.update(tracing.document_attributes("reranker.input_documents", pool, "fusion_score"))
+            span.update(tracing.document_attributes("reranker.output_documents", ranked, "rerank_score"))
+            span.update(rerank_shift(pool, ranked))
+    return ranked
+
+
 def search(qdrant_client, embedding_model, cross_encoder, query, project=None, doc_type=None, top_k=5, candidates=20,
            threshold=RELEVANCE_THRESHOLD, path_prefix=None, modified_after=None, modified_before=None,
-           max_per_source=MAX_PER_SOURCE):
+           max_per_source=MAX_PER_SOURCE, subqueries=None):
+    """subqueries: soru parcalari (decompose.decompose). Verilirse soru ve her parca ayri getirilip
+    kendi sorgusuna gore rerank edilir, sonra sirayla birlestirilir."""
     filters = {k: v for k, v in dict(project=project, doc_type=doc_type, path_prefix=path_prefix,
                                      modified_after=modified_after, modified_before=modified_before).items() if v}
+    queries = [query] + [q for q in (subqueries or []) if q.strip() and q.strip() != query.strip()]
     with tracing.span("search", tracing.CHAIN, **{"input.value": tracing.clip(query), "metadata": filters,
                                                   "rag.project": project, "rag.top_k": top_k,
-                                                  "rag.threshold": threshold}) as root:
-        with tracing.span("embed", tracing.EMBEDDING, **{"embedding.model_name": EMBEDDING_MODEL_NAME}):
-            dense_query = embedding_model.encode(query)
+                                                  "rag.threshold": threshold,
+                                                  "rag.subqueries": queries[1:] or None}) as root:
         flt = store.project_filter(project=project, doc_type=doc_type, path_prefix=path_prefix,
                                    modified_after=modified_after, modified_before=modified_before)
-        with tracing.span("hybrid_retrieve", tracing.RETRIEVER, **{"input.value": tracing.clip(query)}) as span:
-            pool = store.hybrid_search(qdrant_client, dense_query, query, flt=flt, limit=candidates)
-            branch_meta = _trace_branches(span, qdrant_client, dense_query, query, flt, pool)
-            span.update(tracing.document_attributes("retrieval.documents", pool, "fusion_score", branch_meta))
-        with tracing.span("rerank", tracing.RERANKER, **{"reranker.model_name": CROSS_ENCODER_MODEL_NAME,
-                                                         "reranker.query": tracing.clip(query),
-                                                         "reranker.top_k": top_k + 3}) as span:
-            # Pencereler birlesince sonuc azalir; birkac yedek aday tutulur.
-            ranked, pushed = diversify(demote_superseded(rerank(cross_encoder, query, pool, len(pool))),
-                                       max_per_source, top_k + 3)
-            span.set("rag.max_per_source", max_per_source).set("rag.diversity_pushed", pushed)
-            for item in ranked:
-                item["low_confidence"] = item["rerank_score"] < threshold
-            if tracing.enabled():
-                span.update(tracing.document_attributes("reranker.input_documents", pool, "fusion_score"))
-                span.update(tracing.document_attributes("reranker.output_documents", ranked, "rerank_score"))
-                span.update(rerank_shift(pool, ranked))
+        # Pencereler birlesince sonuc azalir; birkac yedek aday tutulur.
+        ranked_lists = [_retrieve_and_rerank(qdrant_client, embedding_model, cross_encoder, q, flt, candidates,
+                                             top_k + 3, max_per_source) for q in queries]
+        ranked = ranked_lists[0] if len(ranked_lists) == 1 else interleave(ranked_lists, top_k + 3)
+        for item in ranked:
+            item["low_confidence"] = item["rerank_score"] < threshold
         wanted = {n for r in ranked for n in neighbor_ids(r["chunk_id"])} - {r["chunk_id"] for r in ranked}
         chunks_by_id = fetch_chunks(qdrant_client, sorted(wanted))
         chunks_by_id.update({r["chunk_id"]: r for r in ranked})

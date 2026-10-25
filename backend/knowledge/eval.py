@@ -108,42 +108,47 @@ def _percentile(values, p):
     return ordered[min(len(ordered) - 1, int(round(p / 100 * (len(ordered) - 1))))]
 
 
-def main():
-    import argparse
+def _gemini_client():
+    from dotenv import load_dotenv
+    from google import genai
 
-    from backend.knowledge import search
+    from backend.shared.paths import PROJECT_ROOT
+
+    load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+    return genai.Client(api_key=os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+
+
+def run_eval(project_name, golden_path=None, top_k=5, label="", max_per_source=None, decompose_questions=False,
+             runtime=None, verbose=True):
+    """Altin seti bir kez kosar, kaydi loga ekler ve ozeti dondurur (main ve gate.py kullanir)."""
+    from backend.knowledge import decompose, search
     from backend.knowledge.runtime import Runtime
     from backend.knowledge.service import KnowledgeService
     from backend.shared import tracing
     from backend.shared.paths import PROJECT_ROOT
 
-    parser = argparse.ArgumentParser(description="Proje aramasi altin set olcumu")
-    parser.add_argument("project")
-    parser.add_argument("--golden-set", default=None)
-    parser.add_argument("--top-k", type=int, default=5)
-    parser.add_argument("--label", default="", help="kosuya not (orn. 'baseline', 'bge-m3')")
-    parser.add_argument("--max-per-source", type=int, default=None, help="belge basina en fazla sonuc (A/B icin)")
-    args = parser.parse_args()
-
-    golden_path = args.golden_set or os.path.join(PROJECT_ROOT, "knowledge_eval", f"{args.project}.jsonl")
-    log_path = os.path.join(PROJECT_ROOT, "artifacts", "knowledge_eval", f"{args.project}.jsonl")
+    golden_path = golden_path or os.path.join(PROJECT_ROOT, "knowledge_eval", f"{project_name}.jsonl")
+    log_path = os.path.join(PROJECT_ROOT, "artifacts", "knowledge_eval", f"{project_name}.jsonl")
     records = load_golden_set(golden_path)
 
-    runtime = Runtime()
-    project = KnowledgeService(runtime).resolve_project(args.project)
+    runtime = runtime or Runtime()
+    project = KnowledgeService(runtime).resolve_project(project_name)
     client, embedder, reranker = runtime.client(), runtime.embedder(), runtime.reranker()
     search.search(client, embedder, reranker, "isinma", project=project, top_k=1)  # model yuklemesi olcume girmesin
     tracing.init_tracing("rag-eval")  # her soru Phoenix'te ayri iz; kacan sorular oradan incelenir
+    gemini = _gemini_client() if decompose_questions else None
 
     scores, latencies, chars = [], [], []
     for record in records:
         with tracing.span("eval_case", tracing.CHAIN, **{
                 "input.value": record["question"], "metadata": {"id": record["id"], "type": record["type"],
-                                                                "label": args.label, "project": project},
+                                                                "label": label, "project": project},
                 "rag.expected_paths": record["expected_paths"] or None}) as span:
             start = time.perf_counter()
-            results = search.search(client, embedder, reranker, record["question"], project=project, top_k=args.top_k,
-                                    **({"max_per_source": args.max_per_source} if args.max_per_source else {}))
+            subqueries = decompose.decompose(gemini, record["question"]) if gemini else None
+            results = search.search(client, embedder, reranker, record["question"], project=project, top_k=top_k,
+                                    subqueries=subqueries,
+                                    **({"max_per_source": max_per_source} if max_per_source else {}))
             latencies.append(time.perf_counter() - start)
             chars.append(len(search.format_results(results)))
             score = score_record(record, results)
@@ -152,11 +157,14 @@ def main():
                          "rag.passed": (score["rank"] is not None and score["rank"] <= 3) if score["answerable"]
                          else score["abstained"]})
         score["top"] = [f"{r['path']} {r['rerank_score']:.2f}" for r in results[:3]]
+        if subqueries:
+            score["subqueries"] = subqueries
         score["top1_score"] = results[0]["rerank_score"] if results else None
         scores.append(score)
         mark = ("OK " if score["rank"] and score["rank"] <= 3 else "-- ") if score["answerable"] else \
                ("OK " if score["abstained"] else "-- ")
-        print(f"{mark}{record['id']} rank={score['rank']} zayif={score['abstained']}  {record['question']}")
+        if verbose:
+            print(f"{mark}{record['id']} rank={score['rank']} zayif={score['abstained']}  {record['question']}")
 
     summary = aggregate(scores)
     summary["latency_p50"] = _percentile(latencies, 50)
@@ -169,24 +177,45 @@ def main():
             lines = [line for line in f if line.strip()]
         previous = json.loads(lines[-1])["summary"] if lines else None
 
-    print(f"\n=== {args.project}: {summary['n']} soru ===")
-    for key in ("hit@1", "hit@3", "hit@5", "mrr", "false_abstain", "abstain_accuracy",
-                "latency_p50", "latency_p95", "chars_mean"):
-        delta = f"  (onceki {previous[key]:.2f})" if previous and key in previous else ""
-        print(f"  {key:17} {summary[key]:.2f}{delta}")
-    print(f"  hit@3 tur bazinda: {summary['hit@3_by_type']}")
-    for key in ("multihop_recall", "hit@3_by_origin"):
-        if key in summary:
-            print(f"  {key}: {summary[key]}")
+    if verbose:
+        print(f"\n=== {project_name}: {summary['n']} soru ===")
+        for key in ("hit@1", "hit@3", "hit@5", "mrr", "false_abstain", "abstain_accuracy",
+                    "latency_p50", "latency_p95", "chars_mean"):
+            delta = f"  (onceki {previous[key]:.2f})" if previous and key in previous else ""
+            print(f"  {key:17} {summary[key]:.2f}{delta}")
+        print(f"  hit@3 tur bazinda: {summary['hit@3_by_type']}")
+        for key in ("multihop_recall", "hit@3_by_origin"):
+            if key in summary:
+                print(f"  {key}: {summary[key]}")
 
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     with open(log_path, "a", encoding="utf-8") as f:
-        f.write(json.dumps({"timestamp": datetime.now(timezone.utc).isoformat(), "label": args.label,
-                            "top_k": args.top_k, "max_per_source": args.max_per_source,
+        f.write(json.dumps({"timestamp": datetime.now(timezone.utc).isoformat(), "label": label,
+                            "golden_set": os.path.basename(golden_path),
+                            "top_k": top_k, "max_per_source": max_per_source,
+                            "decompose": decompose_questions,
                             "summary": summary, "per_question": scores},
                            ensure_ascii=False) + "\n")
-    print(f"\nKayit: {log_path}")
+    if verbose:
+        print(f"\nKayit: {log_path}")
     tracing.flush()
+    return summary, scores
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Proje aramasi altin set olcumu")
+    parser.add_argument("project")
+    parser.add_argument("--golden-set", default=None)
+    parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument("--label", default="", help="kosuya not (orn. 'baseline', 'bge-m3')")
+    parser.add_argument("--max-per-source", type=int, default=None, help="belge basina en fazla sonuc (A/B icin)")
+    parser.add_argument("--decompose", action="store_true",
+                        help="soruyu Gemini ile parcalara bolup her parcayi ayri ara (sure parcalamayi da icerir)")
+    args = parser.parse_args()
+    run_eval(args.project, golden_path=args.golden_set, top_k=args.top_k, label=args.label,
+             max_per_source=args.max_per_source, decompose_questions=args.decompose)
 
 
 if __name__ == "__main__":
