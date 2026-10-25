@@ -74,11 +74,18 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "semantic-retrieval-engine"
+        _auth_note = ""
+        _invalid_token = False
+
+        def parse_request(self):
+            # handler keep-alive baglantida tekrar kullanilir: istek basina durum sifirlanir
+            self._auth_note, self._invalid_token = "", False
+            return super().parse_request()
 
         def log_message(self, fmt, *args):
             headers = getattr(self, "headers", None)
             agent = headers.get("User-Agent", "-") if headers else "-"
-            note = getattr(self, "_auth_note", "")
+            note = self._auth_note
             sys.stderr.write("%s - %s - %s %s\n" % (self.address_string(), fmt % args, agent[:80], note))
 
         def _route(self):
@@ -91,20 +98,25 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
 
         def _authorized(self):
             # claude.ai'de "No sign-in" + ozel istek basligi yolu icin sabit token X-API-Key'de de kabul edilir
+            # _auth_note hangi yolun kullanildigini loglar (token'in kendisi asla loglanmaz)
             api_key = self.headers.get("X-API-Key", "").strip()
             if api_key and hmac.compare_digest(api_key.encode(), token.encode()):
+                self._auth_note = "auth=apikey"
                 return True
             header = self.headers.get("Authorization", "")
             scheme, _, presented = header.partition(" ")
             presented = presented.strip()
             if scheme.lower() != "bearer" or not presented:
-                self._auth_note = f"auth=yok sema={scheme[:10] or '-'}"
+                self._auth_note = f"auth=yok sema={scheme[:10] or '-'} apikey={'yanlis' if api_key else 'yok'}"
                 return False
             if hmac.compare_digest(presented.encode(), token.encode()):
+                self._auth_note = "auth=sabit"
                 return True
             if oauth is not None and oauth.validate_access_token(presented):
+                self._auth_note = "auth=oauth"
                 return True
-            self._auth_note = f"auth=gecersiz uzunluk={len(presented)}"  # token'in kendisi loglanmaz
+            self._auth_note = f"auth=gecersiz uzunluk={len(presented)}"
+            self._invalid_token = True
             return False
 
         def _send(self, status, body=None, headers=None, raw=None, content_type=None):
@@ -118,10 +130,12 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
             if content_type:
                 self.send_header("Content-Type", content_type)
             if status == 401 and self._route().startswith(MCP_PATH):
-                challenge = "Bearer"
+                params = []
+                if self._invalid_token:  # RFC 6750: istemci refresh token'a gecsin
+                    params.append('error="invalid_token"')
                 if oauth is not None:
-                    challenge += f' resource_metadata="{self._issuer()}{RESOURCE_METADATA_PATH}"'
-                self.send_header("WWW-Authenticate", challenge)
+                    params.append(f'resource_metadata="{self._issuer()}{RESOURCE_METADATA_PATH}"')
+                self.send_header("WWW-Authenticate", " ".join(["Bearer", ", ".join(params)]).strip())
             for name, value in (headers or {}).items():
                 self.send_header(name, value)
             self.send_header("Cache-Control", "no-store")
@@ -195,7 +209,7 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
             if isinstance(message, list):
                 return self._send(400, _error(None, -32600, "Batch istekleri desteklenmiyor"))
             if isinstance(message, dict):
-                self._auth_note = f"rpc={str(message.get('method'))[:40]}"
+                self._auth_note = f"{self._auth_note} rpc={str(message.get('method'))[:40]}".strip()
             with lock:
                 response = mcp_server.handle(message)
             if response is None:
@@ -272,18 +286,24 @@ def main():
     try:
         oauth = OAuthProvider(token, store_path=os.path.join(PROJECT_ROOT, "artifacts", "oauth", "store.json"))
         runtime = Runtime()
-        httpd = build_server(MCPServer(KnowledgeService(runtime)), token, port=args.port,
+        service = KnowledgeService(runtime)
+        httpd = build_server(MCPServer(service), token, port=args.port,
                              oauth=oauth, public_url=os.environ.get("MCP_PUBLIC_URL"))
     except ValueError as exc:
         print(f"HATA: {exc}", file=sys.stderr)
         sys.exit(1)
     print(f"MCP HTTP sunucusu: http://127.0.0.1:{args.port}{MCP_PATH}", file=sys.stderr, flush=True)
-    threading.Thread(target=_warm_up, args=(runtime,), daemon=True).start()
+    threading.Thread(target=_warm_up, args=(runtime, service), daemon=True).start()
     httpd.serve_forever()
 
 
-def _warm_up(runtime):
-    """Modelleri acilista yukler: yoksa yeniden baslatma sonrasi ilk arama ~30 sn bekliyor."""
+def _warm_up(runtime, service=None):
+    """Modelleri acilista yukler (yoksa yeniden baslatma sonrasi ilk arama ~30 sn bekliyor),
+    sonra klasor izleyicisini baslatir. RAG_WATCH=0 izleyiciyi kapatir."""
+    import os
+
+    from backend.knowledge.watcher import ProjectWatcher
+
     try:
         runtime.client()
         runtime.embedder().encode("isinma")
@@ -291,6 +311,9 @@ def _warm_up(runtime):
         print("Modeller hazir.", file=sys.stderr, flush=True)
     except Exception as exc:  # isinma basarisizsa ilk arama yine tembel yukler
         print(f"Isinma basarisiz: {exc}", file=sys.stderr, flush=True)
+    if service is not None and os.environ.get("RAG_WATCH", "1") != "0":
+        ProjectWatcher(service).start()
+        print("Klasor izleyici calisiyor.", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":

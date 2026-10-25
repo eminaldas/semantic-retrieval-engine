@@ -10,22 +10,31 @@ import re
 
 from backend.knowledge import store
 
-# factprobe altin setiyle kalibre edildi (2026-10-22, 36 cevapli + 12 cevapsiz soru):
-# cevapli sorularin en iyi parcasi en dusuk -0.97, cevapsizlarin en yuksegi -1.57.
-# -1.25 ikisinin ortasi; eski -3.0 cevapsiz sorularin 7/12'sini guclu gosteriyordu.
-# Model degisirse yeniden kalibre edilmeli. Sadece isaretler, hicbir parcayi dusurmez.
-RELEVANCE_THRESHOLD = -1.25
+# bge-reranker-v2-m3 skoru 0-1 arasi. factprobe altin setinde (2026-10-22, 42 cevapli + 12
+# alakasiz soru, Gemini baglam cumleleriyle) alakasizlarin en iyi parcasi <= 0.041, cevaplilarinki
+# >= 0.069: 0.05 ikisini ayiriyor (yanlis uyari 0, kacan alakasiz 0). Aralik dar; model ya da
+# baglam uretimi degisirse yeniden kalibre edilmeli. Sadece isaretler, hicbir parcayi dusurmez.
+RELEVANCE_THRESHOLD = 0.05
 WINDOW_CHARS = 700  # sonuc basina pencere; eslesen parca bundan uzunsa tek basina gider
 WINDOW_RADIUS = 3  # her yone en fazla kac komsu parca
 MAX_OUTPUT_CHARS = 4000  # tum cevabin butcesi; en az bir sonuc her zaman gider
+SUPERSEDED_FACTOR = 0.5  # yerine yeni not yazilmis notun skoru bu katsayiyla carpilir
 
 _LINES_RE = re.compile(r"(\d+)\s*-\s*(\d+)")
+
+
+def rerank_text(candidate):
+    """Cross-encoder'in gordugu metin: varsa LLM baglam cumlesi + parca. factprobe altin setinde
+    (2026-10-22) baglamla rerank alakasiz sorulari tam ayirdi (abstain 0.92 -> 1.00), hit@5 0.93 -> 0.95."""
+    if candidate.get("chunk_context"):
+        return f"{candidate['chunk_context']}\n{candidate['text']}"
+    return candidate["text"]
 
 
 def rerank(cross_encoder, query, candidates, top_k):
     if not candidates:
         return []
-    scores = cross_encoder.predict([(query, c["text"]) for c in candidates])
+    scores = cross_encoder.predict([(query, rerank_text(c)) for c in candidates])
     ranked = sorted(zip(candidates, scores), key=lambda pair: pair[1], reverse=True)[:top_k]
     return [dict(c, rerank_score=float(s)) for c, s in ranked]
 
@@ -82,18 +91,41 @@ def fetch_chunks(client, chunk_ids):
     return {p.payload["chunk_id"]: p.payload for p in points}
 
 
+def demote_superseded(ranked, factor=SUPERSEDED_FACTOR):
+    """Yerine yeni not yazilmis notlarin skoru dusurulur ve yeniden siralanir; silinmez,
+    cunku Claude'un eski kararin ne oldugunu gormesi de gerekebilir."""
+    for item in ranked:
+        if item.get("superseded_by"):
+            item["rerank_score"] *= factor
+    return sorted(ranked, key=lambda r: r["rerank_score"], reverse=True)
+
+
 def search(qdrant_client, embedding_model, cross_encoder, query, project=None, doc_type=None, top_k=5, candidates=20,
-           threshold=RELEVANCE_THRESHOLD):
+           threshold=RELEVANCE_THRESHOLD, path_prefix=None, modified_after=None, modified_before=None):
     dense_query = embedding_model.encode(query)
-    pool = store.hybrid_search(qdrant_client, dense_query, query, project=project, doc_type=doc_type, limit=candidates)
+    flt = store.project_filter(project=project, doc_type=doc_type, path_prefix=path_prefix,
+                               modified_after=modified_after, modified_before=modified_before)
+    pool = store.hybrid_search(qdrant_client, dense_query, query, flt=flt, limit=candidates)
     # Pencereler birlesince sonuc azalir; birkac yedek aday tutulur.
-    ranked = rerank(cross_encoder, query, pool, top_k + 3)
+    ranked = demote_superseded(rerank(cross_encoder, query, pool, top_k + 3))
     for item in ranked:
         item["low_confidence"] = item["rerank_score"] < threshold
     wanted = {n for r in ranked for n in neighbor_ids(r["chunk_id"])} - {r["chunk_id"] for r in ranked}
     chunks_by_id = fetch_chunks(qdrant_client, sorted(wanted))
     chunks_by_id.update({r["chunk_id"]: r for r in ranked})
     return build_windows(ranked, chunks_by_id)[:top_k]
+
+
+def result_flags(r):
+    """Sonuc basligindaki uyarilar. 'stale' cagiran tarafindan (diske bakarak) doldurulur."""
+    flags = []
+    if r["low_confidence"]:
+        flags.append("zayif eslesme")
+    if r.get("superseded_by"):
+        flags.append(f"eski not, yerini {r['superseded_by']} aldi")
+    if r.get("stale"):
+        flags.append(f"guncel degil: {r['stale']}")
+    return flags
 
 
 def format_results(results, max_chars=MAX_OUTPUT_CHARS):
@@ -108,8 +140,9 @@ def format_results(results, max_chars=MAX_OUTPUT_CHARS):
     blocks, used = [], len(header)
     for i, r in enumerate(results, start=1):
         section = f" · {r['section']}" if r.get("section") else ""
-        flag = " · zayif eslesme" if r["low_confidence"] else ""
-        block = (f"[{i}] {r['path']} ({r['location']}){section} · skor {r['rerank_score']:.2f}{flag}\n"
+        date = f" · {r['modified_at'][:10]}" if r.get("modified_at") else ""
+        flags = "".join(f" · {f}" for f in result_flags(r))
+        block = (f"[{i}] {r['path']} ({r['location']}){section}{date} · skor {r['rerank_score']:.2f}{flags}\n"
                  f"{r.get('context', r['text']).strip()}")
         if blocks and used + len(block) > max_chars:
             blocks.append(f"[{len(results) - i + 1} sonuc daha, karakter butcesi doldu; daha dar bir soruyla arayin]")

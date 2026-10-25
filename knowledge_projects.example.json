@@ -4,6 +4,8 @@
     "description": "Projenin spec, plan, karar ve rapor belgeleri",
     "root": "C:/path/to/my-project",
     "include": ["**/*.md"],
-    "exclude": [".git/**", "**/node_modules/**", "**/.venv/**", "**/venv*/**", "**/site-packages/**"]
+    "exclude": [".git/**", "**/node_modules/**", "**/.venv/**", "**/venv*/**", "**/site-packages/**"],
+    "contextual": false,
+    "watch": true
   }
 }

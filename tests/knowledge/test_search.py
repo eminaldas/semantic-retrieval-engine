@@ -13,6 +13,11 @@ class TestRerank:
         assert [r["text"] for r in ranked] == ["ccc", "bb"]
         assert ranked[0]["rerank_score"] == 3.0
 
+    def test_context_sentence_is_scored_with_text(self):
+        pool = [{"text": "aaaa"}, {"text": "b", "chunk_context": "uzun bir baglam"}]
+        ranked = search.rerank(FakeCrossEncoder(), "q", pool, top_k=2)
+        assert ranked[0]["text"] == "b" and ranked[0]["rerank_score"] == len("uzun bir baglam\nb")
+
     def test_empty_pool(self):
         assert search.rerank(FakeCrossEncoder(), "q", [], 5) == []
 
