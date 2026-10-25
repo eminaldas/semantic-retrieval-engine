@@ -7,7 +7,7 @@ import threading
 from collections import Counter
 from datetime import datetime, timezone
 
-from backend.knowledge import projects, search, store, sync
+from backend.knowledge import projects, routing, search, store, sync
 from backend.shared import tracing
 
 MAX_BATCH_QUERIES = 4
@@ -42,6 +42,7 @@ class KnowledgeService:
         self.sync_lock = threading.Lock()  # elle sync, add_note ve izleyici ayni anda indekslemesin
         self.last_sync = {}  # proje -> (zaman, ozet); index_status gosterir
         self.agent_factory = None  # ask araci; testler sahte ajan verir
+        self.project_hints = True  # proje verilmeyen aramada baska projeye uyma notu (routing.py)
 
     def _config(self):
         return self.config_loader()
@@ -92,13 +93,25 @@ class KnowledgeService:
         top_k = max(1, min(int(top_k), 15))
         options = dict(project=self.resolve_project(project), doc_type=doc_type, path_prefix=path_prefix,
                        modified_after=modified_after, modified_before=modified_before)
+        # Proje verilmediyse soru baska projeye daha iyi uyuyor mu diye bakilir (routing.py); sadece not duser.
+        hint_projects = sorted(self._projects()) if not project and self.project_hints else []
         if len(batch) == 1:
-            return search.format_results(self._search_one(batch[0], top_k, options))
+            return self._with_hint(search.format_results(self._search_one(batch[0], top_k, options)),
+                                   batch[0], options["project"], hint_projects)
         # Toplu sorguda butce sorulara bolunur ki toplam baglam tek sorgununkinin ~1.5 katini gecmesin.
         budget = max(1500, int(search.MAX_OUTPUT_CHARS * 1.5) // len(batch))
-        sections = [f"## Soru {i}: {q}\n\n{search.format_results(self._search_one(q, top_k, options), max_chars=budget)}"
+        sections = [f"## Soru {i}: {q}\n\n" + self._with_hint(
+                        search.format_results(self._search_one(q, top_k, options), max_chars=budget),
+                        q, options["project"], hint_projects)
                     for i, q in enumerate(batch, start=1)]
         return "\n\n======\n\n".join(sections)
+
+    def _with_hint(self, text, query, current, projects):
+        if len(projects) < 2:
+            return text
+        hint = routing.project_hint(self.runtime.client(), self.runtime.embedder(), self.runtime.reranker(),
+                                    query, current, projects)
+        return f"{text}\n\n{hint}" if hint else text
 
     def ask(self, question, project=None):
         """Arastirma ajani (Gemini) soruyu kendi arayip okuyarak cevaplar; Claude'a parcalar yerine
