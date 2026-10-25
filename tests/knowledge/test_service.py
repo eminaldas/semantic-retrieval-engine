@@ -52,3 +52,44 @@ def test_ask_formats_answer_with_sources():
 def test_ask_rejects_empty_question():
     with pytest.raises(ValueError):
         _service({"p": {"root": "/x"}}).ask("  ")
+
+
+def _search_service(monkeypatch, hint):
+    from backend.knowledge import routing, search
+
+    seen = {}
+    service = _service({"_default_project": "a", **TWO_PROJECTS})
+    monkeypatch.setattr(service, "_search_one", lambda q, k, o: seen.setdefault("project", o["project"]) and [])
+    monkeypatch.setattr(search, "format_results", lambda results, max_chars=None: "SONUC")
+
+    class Runtime:
+        def client(self): return None
+        def embedder(self): return None
+        def reranker(self): return None
+
+    service.runtime = Runtime()
+
+    def fake_hint(client, embedder, reranker, query, current, projects, current_score=None):
+        seen["hint_args"] = (current, projects)
+        seen["current_score"] = current_score
+        return hint
+
+    monkeypatch.setattr(routing, "project_hint", fake_hint)
+    return service, seen
+
+
+def test_search_without_project_appends_hint(monkeypatch):
+    service, seen = _search_service(monkeypatch, "Not: b")
+    assert service.search("soru") == "SONUC\n\nNot: b"
+    assert seen["project"] == "a" and seen["hint_args"] == ("a", ["a", "b"]) and seen["current_score"] == 0.0
+
+
+def test_search_with_explicit_project_skips_hint(monkeypatch):
+    service, seen = _search_service(monkeypatch, "Not: b")
+    assert service.search("soru", project="a") == "SONUC" and "hint_args" not in seen
+
+
+def test_search_hint_can_be_turned_off(monkeypatch):
+    service, seen = _search_service(monkeypatch, "Not: b")
+    service.project_hints = False
+    assert service.search("soru") == "SONUC" and "hint_args" not in seen
