@@ -95,6 +95,10 @@ set expects.
 `--judge` also asks an LLM judge (Gemini Flash, binary labels) whether each answer is grounded in
 the text the agent retrieved and whether it matches the gold reference.
 
+`--long-context` is the no-retrieval baseline: every project document goes into Gemini's context
+(held in an explicit context cache, so each question pays only for itself), and the same scorer and
+judge grade it against the agent.
+
 The gold set is maintained with `python -m backend.knowledge.goldgen`: `audit` lists records whose
 expected text also appears in documents the record does not accept (a correct retrieval would be
 scored as a miss), and `generate` drafts harder candidates (paraphrase, numbers, rationale, timeline,

@@ -51,10 +51,10 @@ SCHEMA = {
 }
 
 
-def build_prompt(question, evidence, answer, reference=None):
+def build_prompt(question, evidence, answer, reference=None, max_evidence_chars=MAX_EVIDENCE_CHARS):
     text = "\n\n---\n\n".join(evidence)
-    if len(text) > MAX_EVIDENCE_CHARS:
-        text = text[:MAX_EVIDENCE_CHARS] + "\n[... kesildi]"
+    if len(text) > max_evidence_chars:
+        text = text[:max_evidence_chars] + "\n[... kesildi]"
     if isinstance(reference, list):
         reference = " / ".join(reference)
     return PROMPT.format(
@@ -74,12 +74,13 @@ def parse_verdict(raw):
         return {"grounded": None, "correct": None, "unsupported": [], "reason": "", "error": f"{type(exc).__name__}: {exc}"}
 
 
-def judge_answer(client, question, evidence, answer, reference=None, model=JUDGE_MODEL):
+def judge_answer(client, question, evidence, answer, reference=None, model=JUDGE_MODEL,
+                 max_evidence_chars=MAX_EVIDENCE_CHARS):
     from google.genai import types
 
     from backend.shared import gemini_retry, gemini_usage
 
-    prompt = build_prompt(question, evidence, answer, reference)
+    prompt = build_prompt(question, evidence, answer, reference, max_evidence_chars)
     config = types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json",
                                          response_schema=SCHEMA)
 

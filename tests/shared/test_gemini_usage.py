@@ -33,6 +33,15 @@ class TestLogUsage:
         assert entry["estimated_cost_usd"] == pytest.approx(0.0003)
         assert "timestamp" in entry
 
+    def test_cached_tokens_are_priced_at_a_tenth(self, tmp_path):
+        log_file = tmp_path / "usage.jsonl"
+        usage = FakeUsageMetadata(prompt_token_count=1_000_000, candidates_token_count=0, total_token_count=1_000_000)
+        usage.cached_content_token_count = 1_000_000
+        gemini_usage.log_usage("knowledge_longctx", "gemini-flash-latest", FakeResponse(usage), log_path=str(log_file))
+        entry = json.loads(log_file.read_text(encoding="utf-8"))
+        assert entry["cached_tokens"] == 1_000_000
+        assert entry["estimated_cost_usd"] == pytest.approx(0.03)
+
     def test_unknown_model_records_null_cost(self, tmp_path):
         log_file = tmp_path / "usage.jsonl"
         response = FakeResponse(FakeUsageMetadata(prompt_token_count=100, candidates_token_count=50, total_token_count=150))
