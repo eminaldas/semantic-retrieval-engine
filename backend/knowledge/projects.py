@@ -20,6 +20,14 @@ NOTES_PREFIX = "notes/"
 DOCUMENTS_SUBDIR = "belgeler/"  # add_document ile yazilan tam belgeler; not degil, belge sayilir
 SUPERSEDED_MARKER = "_Yerini alan not: {path}_"
 SUPERSEDED_RE = re.compile(r"^_Yerini alan not: (\S+?)_\s*$", re.MULTILINE)
+# Turlu kayitlar (plan H2): her notun basinda tek satir kunye. Insan da okuyup elle duzeltebilir.
+KINDS = ("note", "decision", "task", "fact", "preference", "focus", "session")
+TASK_KIND = "task"
+META_MARKER = "_Kayit: {record_id} · tur: {kind}{status}_"
+META_RE = re.compile(r"^_Kayit: ([A-Z]-\d{4}) · tur: ([a-z]+)(?: · durum: ([a-z]+))?_\s*$", re.MULTILINE)
+RECORD_ID_RE = re.compile(r"^[A-Z]-\d{4}$")
+DONE_MARKER = "_Tamamlandi: {date}{note}_"
+DONE_RE = re.compile(r"^_Tamamlandi: ", re.MULTILINE)
 DEFAULT_INCLUDE = ["**/*.md"]
 DEFAULT_EXCLUDE = ["node_modules/**", ".git/**", ".expo/**", "**/node_modules/**"]
 SUPPORTED_EXTENSIONS = (".md", ".txt", ".pdf", ".docx", ".html", ".htm")
@@ -198,6 +206,22 @@ def superseded_by(raw_text):
     return match.group(1) if match else None
 
 
+def record_id(number, kind="note"):
+    """Kisa kimlik: karar K-0042, is I-0007, oturum O-0003, gerisi N-0012."""
+    letter = {"decision": "K", "task": "I", "session": "O"}.get(kind, "N")
+    return f"{letter}-{number:04d}"
+
+
+def note_meta(raw_text):
+    """Notun kunyesi: {'record_id', 'kind', 'status'}. Kunye yoksa tur 'note', durum None.
+    Acik bir is sonradan 'Tamamlandi' satiri eklenerek kapatilir."""
+    match = META_RE.search(raw_text)
+    kind, status = ("note", None) if not match else (match.group(2), match.group(3))
+    if kind == TASK_KIND and DONE_RE.search(raw_text):
+        status = "done"
+    return {"record_id": match.group(1) if match else None, "kind": kind, "status": status}
+
+
 def doc_type_for(relpath):
     if relpath.startswith(NOTES_PREFIX + DOCUMENTS_SUBDIR):
         return "doc"
@@ -212,6 +236,7 @@ def build_chunk_records(project, relpath, raw_text, chunks, mtime=None, indexed_
     modified = datetime.fromtimestamp(mtime, timezone.utc).isoformat() if mtime else None
     indexed = indexed_at or datetime.now(timezone.utc).isoformat()
     replaced_by = superseded_by(raw_text)
+    meta = note_meta(raw_text) if doc_type_for(relpath) == "note" else {"record_id": None, "kind": None, "status": None}
     dirs = dir_prefixes(relpath)
     records = []
     for index, (text, location) in enumerate(chunks):
@@ -234,6 +259,9 @@ def build_chunk_records(project, relpath, raw_text, chunks, mtime=None, indexed_
             "indexed_at": indexed,
             "dirs": dirs,
             "superseded_by": replaced_by,
+            "kind": meta["kind"],
+            "status": meta["status"],
+            "record_id": meta["record_id"],
         })
     return records
 
@@ -262,7 +290,11 @@ def note_filename(title, now=None):
     return f"{now.strftime('%Y-%m-%d-%H%M')}-{slugify_title(title)}.md"
 
 
-def render_note(project, title, body, now=None, supersedes=None):
+def render_note(project, title, body, now=None, supersedes=None, rec_id=None, kind="note"):
     now = now or datetime.now(timezone.utc)
     replaces = f" · yerine gectigi not: {supersedes}" if supersedes else ""
-    return f"# {title}\n\n_Proje: {project} · {now.strftime('%Y-%m-%d %H:%M')} UTC{replaces}_\n\n{body.strip()}\n"
+    head = f"# {title}\n\n_Proje: {project} · {now.strftime('%Y-%m-%d %H:%M')} UTC{replaces}_\n"
+    if rec_id:
+        status = " · durum: open" if kind == TASK_KIND else ""
+        head += META_MARKER.format(record_id=rec_id, kind=kind, status=status) + "\n"
+    return f"{head}\n{body.strip()}\n"

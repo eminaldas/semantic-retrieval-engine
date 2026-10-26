@@ -148,6 +148,11 @@ Per-project options in `knowledge_projects.json`: `include`/`exclude` globs, `co
 the address they were issued for (RFC 8707 `resource`), so a workspace token does not open `/mcp` or
 another workspace, and `MCP_HTTP_TOKEN` only opens `/mcp`. Check the section with
 `python -m backend.knowledge.workspaces`; the server refuses to start if it is invalid.
+Notes are typed records: `add_note` takes a `kind` (`decision`, `task`, `fact`, `preference`, `focus`)
+and each note gets a short id (`K-0042` for decisions, `I-0007` for tasks, `O-0003` for sessions) that
+`supersedes` and `close_task` accept. `checkpoint` writes a session summary plus one record per
+decision and open task in a single call, and `brief` lists the open tasks. `search` filters by `kind`.
+The `oturumu-kaydet` prompt asks the model to call `checkpoint`.
 `"external_llm": false` keeps a workspace's documents away from Gemini (the `ask` tool is hidden)
 and `ask_daily_usd` caps `ask` spending per workspace per day (in memory, resets on restart).
 Every tool call is written to `artifacts/audit/mcp_audit.jsonl` with time, workspace, client, tool,
