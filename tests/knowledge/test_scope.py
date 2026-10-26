@@ -131,12 +131,12 @@ def test_scoped_view_shares_state_and_ask_inherits_scope():
 def test_read_only_workspace_hides_write_tools():
     server = MCPServer(_service(Scope.workspace("r", read=["b"])))
     names = {t["name"] for t in server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]}
-    assert "search" in names and not names & {"add_note", "add_document", "sync_project"}
+    assert "search" in names and not names & {"add_note", "add_document", "sync_project", "checkpoint", "close_task"}
     result = server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
                             "params": {"name": "add_note", "arguments": {"title": "t", "body": "b"}}})["result"]
     assert result["isError"]
     full = MCPServer(_service())
-    assert len(full.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/list"})["result"]["tools"]) == 11
+    assert len(full.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/list"})["result"]["tools"]) == 13
 
 
 class _Point:
@@ -153,9 +153,10 @@ class _Client:
         return [_Point(r) for r in self.rows], None
 
 
-def _row(project, path, doc_type, modified, section="", superseded_by=None):
+def _row(project, path, doc_type, modified, section="", superseded_by=None, kind=None, status=None, record_id=None):
     return {"source_id": f"{project}:{path}", "project": project, "path": path, "doc_type": doc_type,
-            "modified_at": modified, "section": section, "superseded_by": superseded_by}
+            "modified_at": modified, "section": section, "superseded_by": superseded_by, "kind": kind,
+            "status": status, "record_id": record_id}
 
 
 def test_brief_lists_live_notes_and_recent_docs_within_scope():
@@ -174,6 +175,18 @@ def test_brief_lists_live_notes_and_recent_docs_within_scope():
     assert client.filters[0].must[0].match.any == ["b", "c"]
     with pytest.raises(ValueError):
         service.brief(project="a")
+
+
+def test_brief_lists_open_tasks_and_hides_closed_ones():
+    rows = [_row("b", "notes/t1.md", "note", "2026-10-25T10:00:00Z", "Arayuzu yaz", kind="task", status="open",
+                 record_id="I-0007"),
+            _row("b", "notes/t2.md", "note", "2026-10-24T10:00:00Z", "Esik ayarla", kind="task", status="done",
+                 record_id="I-0004")]
+    client = _Client(rows)
+    service = _service(Scope.workspace("w", read=["b"]))
+    service.runtime = type("R", (), {"client": lambda self: client})()
+    text = service.brief()
+    assert "Acik isler:" in text and "- I-0007 Arayuzu yaz" in text and "I-0004" not in text
 
 
 class _PricedAgent:

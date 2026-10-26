@@ -19,6 +19,8 @@ STALE_TOLERANCE_SECONDS = 2  # dosya sistemi zaman damgasi yuvarlamasi
 BRIEF_MAX_CHARS = 1500
 BRIEF_NOTES = 5
 BRIEF_DOCS = 8
+BRIEF_TASKS = 5
+NOTE_HEAD_CHARS = 4000  # kunye icin notun basi yeter
 
 
 def _check_date(name, value):
@@ -122,7 +124,7 @@ class KnowledgeService:
     # --- arama -------------------------------------------------------------
 
     def search(self, query=None, queries=None, project=None, doc_type=None, top_k=5, path_prefix=None,
-               modified_after=None, modified_before=None):
+               modified_after=None, modified_before=None, kind=None):
         batch = [q for q in (queries or []) if q and q.strip()]
         if query and query.strip():
             batch.insert(0, query)
@@ -133,8 +135,10 @@ class KnowledgeService:
         _check_date("modified_after", modified_after)
         _check_date("modified_before", modified_before)
         top_k = max(1, min(int(top_k), 15))
+        if kind is not None and kind not in projects.KINDS:
+            raise ValueError(f"kind su degerlerden biri olmali: {', '.join(projects.KINDS)}")
         options = dict(project=self._project_filter(self.resolve_project(project)), doc_type=doc_type, path_prefix=path_prefix,
-                       modified_after=modified_after, modified_before=modified_before)
+                       modified_after=modified_after, modified_before=modified_before, kind=kind)
         # Proje verilmediyse soru baska projeye daha iyi uyuyor mu diye bakilir (routing.py); sadece not duser.
         hint_projects = sorted(self._projects()) if not project and self.project_hints else []
         if len(batch) == 1:
@@ -268,14 +272,14 @@ class KnowledgeService:
 
     def brief(self, project=None):
         """Yeni sohbetin ilk adimi: 'nerede kalmistik'. Kapsamdaki projeler, son notlar (yerini yenisi
-        almislar haric) ve son degisen belgeler; LLM yok, BRIEF_MAX_CHARS'i gecmez. Turlu kayitlar
-        (karar, acik is) plan H2'de eklenecek."""
+        almislar haric), acik isler ve son degisen belgeler; LLM yok, BRIEF_MAX_CHARS'i gecmez."""
         resolved = self.resolve_project(project)
         names = [resolved] if resolved else sorted(self._projects())
         if not names:
             return "Bu baglantida proje yok."
         rows = store.scroll_all(self.runtime.client(), store.project_filter(project=tuple(names)),
-                                ("source_id", "project", "path", "doc_type", "modified_at", "section", "superseded_by"))
+                                ("source_id", "project", "path", "doc_type", "modified_at", "section",
+                                 "superseded_by", "kind", "status", "record_id"))
         sources = {}
         for row in rows:
             entry = sources.setdefault(row["source_id"], dict(row, title=None))
@@ -300,11 +304,16 @@ class KnowledgeService:
             lines.append(f"Proje {name}{mode}" + (f": {description}" if description else ""))
         notes = [e for e in sources.values() if e["doc_type"] == "note" and not e.get("superseded_by")]
         docs = [e for e in sources.values() if e["doc_type"] == "doc"]
+        tasks = [e for e in notes if e.get("kind") == projects.TASK_KIND and e.get("status") != "done"]
+        if tasks:
+            lines += ["", "Acik isler:"]
+            lines += [f"- {e.get('record_id') or '?'} {e['title'] or e['path']}" for e in newest(tasks, BRIEF_TASKS)]
         lines += ["", "Son notlar (kararlar ve ilerleme):"]
         lines += [label(e) + (f": {e['title']}" if e["title"] else "") for e in newest(notes, BRIEF_NOTES)] or ["- (not yok)"]
         lines += ["", "Son degisen belgeler:"]
         lines += [label(e) for e in newest(docs, BRIEF_DOCS)] or ["- (belge yok)"]
-        lines += ["", "Ayrinti icin search; bir notun tamami icin get_document. Is bitince add_note ile kaydet."]
+        lines += ["", "Ayrinti icin search; bir notun tamami icin get_document. Is bitince checkpoint ya da "
+                      "add_note ile kaydet, kapanan isi close_task ile kapat."]
         text = "\n".join(lines)
         if len(text) > BRIEF_MAX_CHARS:
             text = text[:BRIEF_MAX_CHARS].rsplit("\n", 1)[0] + "\n[... kisaltildi]"
@@ -361,31 +370,110 @@ class KnowledgeService:
 
     # --- yazma -------------------------------------------------------------
 
-    def add_note(self, title, body, project=None, supersedes=None):
+    def add_note(self, title, body, project=None, supersedes=None, kind="note"):
         project = self._require_writable(project)
+        rel, old = self._write_note(project, title, body, kind=kind, supersedes=supersedes)
+        self._sync(project, only=[rel] + ([old] if old else []))
+        meta = projects.note_meta(self._read_note(project, rel))
+        suffix = f" Eski kayit ({old}) geri plana alindi." if old else ""
+        return f"Not kaydedildi ve indekslendi: {rel} ({meta['record_id']}, {kind}).{suffix}"
+
+    def checkpoint(self, summary, decisions=None, open_tasks=None, project=None):
+        """Oturum kaydi: ozet bir 'session' notu, her karar bir 'decision', her is bir acik 'task' olur.
+        Boylece brifing acik isleri ve son kararlari listeleyebilir (plan H2)."""
+        project = self._require_writable(project)
+        decisions = [d for d in (decisions or []) if d and d.strip()]
+        tasks = [t for t in (open_tasks or []) if t and t.strip()]
+        if not summary or not summary.strip():
+            raise ValueError("summary bos olamaz")
+        written, ids = [], []
+        for kind, items in (("decision", decisions), (projects.TASK_KIND, tasks)):
+            for item in items:
+                title = item.strip().split("\n")[0][:80]
+                rel, _ = self._write_note(project, title, item, kind=kind)
+                written.append(rel)
+                ids.append(projects.note_meta(self._read_note(project, rel))["record_id"])
+        body = summary.strip()
+        for label, items in (("Kararlar", decisions), ("Acik isler", tasks)):
+            if items:
+                body += f"\n\n## {label}\n" + "\n".join(f"- {i.strip()}" for i in items)
+        rel, _ = self._write_note(project, f"Oturum ozeti {datetime.now(timezone.utc):%Y-%m-%d %H:%M}", body,
+                                  kind="session")
+        written.append(rel)
+        self._sync(project, only=written)
+        session_id = projects.note_meta(self._read_note(project, rel))["record_id"]
+        counts = f"{len(decisions)} karar, {len(tasks)} acik is"
+        return (f"Oturum kaydedildi: {rel} ({session_id}), {counts}."
+                + (f" Kayitlar: {', '.join(ids)}." if ids else ""))
+
+    def close_task(self, task, note=None, project=None):
+        """Acik bir isi kapatir: kisa kimlik (orn. I-0007) ya da not yolu verilir."""
+        project = self._require_writable(project)
+        rel = self._find_note(project, task)
+        raw = self._read_note(project, rel)
+        meta = projects.note_meta(raw)
+        if meta["kind"] != projects.TASK_KIND:
+            raise ValueError(f"{task} bir is kaydi degil (tur: {meta['kind']}).")
+        if meta["status"] == "done":
+            return f"{rel} zaten kapali."
+        suffix = f" · {note.strip()}" if note and note.strip() else ""
+        with open(projects.source_file(project, {}, rel, self.notes_dir), "a", encoding="utf-8") as f:
+            f.write("\n" + projects.DONE_MARKER.format(date=f"{datetime.now(timezone.utc):%Y-%m-%d}",
+                                                       note=suffix) + "\n")
+        self._sync(project, only=[rel])
+        return f"Is kapatildi: {rel} ({meta['record_id']})."
+
+    # --- not dosyalari ------------------------------------------------------
+
+    def _write_note(self, project, title, body, kind="note", supersedes=None):
+        """Not dosyasini yazar; doner: (yeni yol, geri plana alinan eski yol ya da None)."""
+        if kind not in projects.KINDS:
+            raise ValueError(f"kind su degerlerden biri olmali: {', '.join(projects.KINDS)}")
         if not title.strip() or not body.strip():
             raise ValueError("title ve body bos olamaz")
-        old_path = None
-        if supersedes:
-            if not supersedes.startswith(projects.NOTES_PREFIX) or ".." in supersedes:
-                raise ValueError(f"supersedes bir not yolu olmali (notes/... ile baslar), gelen: {supersedes}")
-            old_path = projects.source_file(project, {}, supersedes, self.notes_dir)
-            if not os.path.isfile(old_path):
-                raise ValueError(f"Yerine gecilecek not bulunamadi: {supersedes}")
+        old = self._find_note(project, supersedes) if supersedes else None
         folder = os.path.join(self.notes_dir, project)
         os.makedirs(folder, exist_ok=True)
         filename = projects.note_filename(title)
         rel = projects.NOTES_PREFIX + filename
+        rec_id = projects.record_id(self._next_record_number(project), kind)
         with open(os.path.join(folder, filename), "w", encoding="utf-8") as f:
-            f.write(projects.render_note(project, title, body, supersedes=supersedes))
-        changed = [rel]
-        if old_path:
-            with open(old_path, "a", encoding="utf-8") as f:
+            f.write(projects.render_note(project, title, body, supersedes=old, rec_id=rec_id, kind=kind))
+        if old:
+            with open(projects.source_file(project, {}, old, self.notes_dir), "a", encoding="utf-8") as f:
                 f.write("\n" + projects.SUPERSEDED_MARKER.format(path=rel) + "\n")
-            changed.append(supersedes)
-        self._sync(project, only=changed)
-        suffix = f" Eski not ({supersedes}) geri plana alindi." if supersedes else ""
-        return f"Not kaydedildi ve indekslendi: {rel}.{suffix}"
+        return rel, old
+
+    def _note_files(self, project):
+        folder = os.path.join(self.notes_dir, project)
+        if not os.path.isdir(folder):
+            return []
+        return sorted(projects.NOTES_PREFIX + n for n in os.listdir(folder) if n.endswith(".md"))
+
+    def _read_note(self, project, rel):
+        with open(projects.source_file(project, {}, rel, self.notes_dir), encoding="utf-8") as f:
+            return f.read(NOTE_HEAD_CHARS)
+
+    def _next_record_number(self, project):
+        """Projedeki en buyuk kayit numarasinin bir fazlasi; kimlikler proje icinde tekildir."""
+        numbers = [int(meta["record_id"][2:]) for meta in
+                   (projects.note_meta(self._read_note(project, rel)) for rel in self._note_files(project))
+                   if meta["record_id"]]
+        return max(numbers, default=0) + 1
+
+    def _find_note(self, project, reference):
+        """Kisa kimlik ya da not yolu -> not yolu. Bulunamazsa anlamli hata."""
+        if projects.RECORD_ID_RE.match(reference.strip()):
+            wanted = reference.strip()
+            for rel in self._note_files(project):
+                if projects.note_meta(self._read_note(project, rel))["record_id"] == wanted:
+                    return rel
+            raise ValueError(f"{wanted} kimlikli kayit bu projede bulunamadi.")
+        if not reference.startswith(projects.NOTES_PREFIX) or ".." in reference:
+            raise ValueError(f"Kisa kimlik (orn. I-0007) ya da not yolu (notes/...) verin, gelen: {reference}")
+        if not os.path.isfile(projects.source_file(project, {}, reference, self.notes_dir)):
+            raise ValueError(f"Not bulunamadi: {reference}")
+        return reference
 
     def add_document(self, name, content, project=None, overwrite=False):
         """Claude'un yazdigi tam bir belgeyi (plan, ozet, rapor) motorun not klasorune

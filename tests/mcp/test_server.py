@@ -48,10 +48,12 @@ class TestHandshake:
 class TestPrompts:
     def test_continue_prompt_carries_the_brief(self):
         server = srv.MCPServer(FakeService())
-        assert [p["name"] for p in _call(server, "prompts/list")["result"]["prompts"]] == ["devam-et"]
+        assert [p["name"] for p in _call(server, "prompts/list")["result"]["prompts"]] == ["oturumu-kaydet", "devam-et"]
         resp = _call(server, "prompts/get", {"name": "devam-et", "arguments": {"project": "a"}})
         text = resp["result"]["messages"][0]["content"]["text"]
         assert text.startswith("Asagidaki brifing") and text.endswith("# Brifing a")
+        save = _call(server, "prompts/get", {"name": "oturumu-kaydet"})["result"]["messages"][0]["content"]["text"]
+        assert "checkpoint" in save and "close_task" in save
 
     def test_unknown_prompt_or_project_is_an_error(self):
         server = srv.MCPServer(FakeService())
@@ -62,8 +64,8 @@ class TestPrompts:
 class TestTools:
     def test_tools_list_names(self):
         names = [t["name"] for t in _call(srv.MCPServer(FakeService()), "tools/list")["result"]["tools"]]
-        assert names == ["brief", "search", "ask", "overview", "list_documents", "get_document", "add_note", "add_document",
-                         "index_status", "sync_project", "list_projects"]
+        assert names == ["brief", "search", "ask", "overview", "list_documents", "get_document", "add_note",
+                         "checkpoint", "close_task", "add_document", "index_status", "sync_project", "list_projects"]
 
     def test_call_dispatches_to_service(self):
         service = FakeService()
