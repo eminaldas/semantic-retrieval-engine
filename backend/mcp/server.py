@@ -18,7 +18,8 @@ SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"]
 
 INSTRUCTIONS = (
     "Proje belgeleri (spec, plan, rapor, karar notlari) icin hafiza katmani. "
-    "Projeyi tanimiyorsaniz once 'overview'. Uzun belgeleri okumadan once 'search' ile ilgili "
+    "Sohbetin ilk sorusu projeyle ilgiliyse once 'brief' cagirin: son notlar ve degisen belgelerle "
+    "nerede kalindigini gosterir. Projeyi tanimiyorsaniz 'overview'. Uzun belgeleri okumadan once 'search' ile ilgili "
     "parcalari bulun; sonuclar kaynak, satir araligi ve degisiklik tarihiyle gelir, cevapta "
     "bunlari kaynak olarak gosterin ve ayni konuda celisen sonuclarda yeni tarihliyi esas alin. "
     "Tum belge gerekirse 'get_document'. Bir is ya da karar bittiginde 'add_note' ile ozetini "
@@ -28,6 +29,12 @@ INSTRUCTIONS = (
 _PROJECT = {"type": "string", "description": "Proje adi (orn. nehaber). Tek proje varsa bos birakilabilir."}
 
 TOOLS = [
+    {
+        "name": "brief",
+        "description": ("Yeni sohbette ilk cagrilacak 'nerede kalmistik' ozeti: projeler, son notlar (kararlar, "
+                        "ilerleme) ve son degisen belgeler, tarihleriyle. Kisa (~1.500 karakter); ayrinti icin search."),
+        "inputSchema": {"type": "object", "properties": {"project": _PROJECT}},
+    },
     {
         "name": "search",
         "description": (
@@ -141,12 +148,30 @@ TOOLS = [
     },
 ]
 
+# claude.ai'de "+" menusunden sohbete eklenen hazir mesajlar (MCP prompts).
+PROMPTS = [
+    {
+        "name": "devam-et",
+        "title": "Devam et",
+        "description": "Brifingi sohbete ekler ve kalinan yerden devam etmeyi ister.",
+        "arguments": [{"name": "project", "description": "Proje adi (bos: varsayilan)", "required": False}],
+    },
+]
+CONTINUE_TEXT = ("Asagidaki brifing bu bilgi tabaninda nerede kaldigimizi gosteriyor. Ona gore kaldigimiz yerden "
+                 "devam edelim; eksik bir ayrinti gerekirse search ile bul, uydurma.\n\n")
+
 _ALLOWED_ARGS = {t["name"]: set(t["inputSchema"].get("properties", {})) for t in TOOLS}
+WRITE_TOOLS = {"add_note", "add_document", "sync_project"}
 
 
 class MCPServer:
     def __init__(self, service):
         self.service = service
+        scope = getattr(service, "scope", None)
+        # Salt okunur workspace'te yazma araclari listede bile gorunmez (model denemeye kalkmasin).
+        hidden = WRITE_TOOLS if scope is not None and scope.read_only else set()
+        self.tools = [t for t in TOOLS if t["name"] not in hidden]
+        self._allowed_args = {name: args for name, args in _ALLOWED_ARGS.items() if name not in hidden}
 
     def handle(self, message):
         """Tek bir JSON-RPC mesajini isler. Bildirimler (id'siz) icin None doner."""
@@ -162,9 +187,13 @@ class MCPServer:
         if method == "ping":
             return _result(msg_id, {})
         if method == "tools/list":
-            return _result(msg_id, {"tools": TOOLS})
+            return _result(msg_id, {"tools": self.tools})
         if method == "tools/call":
             return _result(msg_id, self._call_tool(params))
+        if method == "prompts/list":
+            return _result(msg_id, {"prompts": PROMPTS})
+        if method == "prompts/get":
+            return self._get_prompt(msg_id, params)
         return _error(msg_id, -32601, f"Method not found: {method}")
 
     def _initialize(self, params):
@@ -172,17 +201,30 @@ class MCPServer:
         version = requested if requested in SUPPORTED_PROTOCOL_VERSIONS else SUPPORTED_PROTOCOL_VERSIONS[0]
         return {
             "protocolVersion": version,
-            "capabilities": {"tools": {"listChanged": False}},
+            "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False}},
             "serverInfo": SERVER_INFO,
             "instructions": INSTRUCTIONS,
         }
 
+    def _get_prompt(self, msg_id, params):
+        if params.get("name") != "devam-et":
+            return _error(msg_id, -32602, f"Bilinmeyen prompt: {params.get('name')}")
+        project = (params.get("arguments") or {}).get("project") or None
+        with tracing.span("prompt.devam-et", tracing.TOOL, **{"input.value": project or ""}) as span:
+            try:
+                text = CONTINUE_TEXT + self.service.brief(project=project)
+            except (ValueError, KeyError) as exc:
+                span.set("rag.error_kind", "input").error(exc)
+                return _error(msg_id, -32602, str(exc))
+        return _result(msg_id, {"description": "Kalinan yerden devam",
+                                "messages": [{"role": "user", "content": {"type": "text", "text": text}}]})
+
     def _call_tool(self, params):
         name = params.get("name")
         args = params.get("arguments") or {}
-        if name not in _ALLOWED_ARGS:
+        if name not in self._allowed_args:
             return _tool_text(f"Bilinmeyen arac: {name}", is_error=True)
-        unknown = set(args) - _ALLOWED_ARGS[name]
+        unknown = set(args) - self._allowed_args[name]
         if unknown:
             return _tool_text(f"Bilinmeyen parametre(ler): {', '.join(sorted(unknown))}", is_error=True)
         params = json.dumps(args, ensure_ascii=False)

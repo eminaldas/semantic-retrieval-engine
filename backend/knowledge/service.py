@@ -1,6 +1,7 @@
 """MCP araclarinin arkasindaki is mantigi. Sunucudan (protokol) ayri tutuldu ki
 araclar Qdrant/model olmadan, sahte bir runtime ile test edilebilsin."""
 
+import copy
 import os
 import re
 import threading
@@ -8,11 +9,16 @@ from collections import Counter
 from datetime import datetime, timezone
 
 from backend.knowledge import projects, routing, search, store, sync
+from backend.knowledge.scope import Scope
 from backend.shared import tracing
 
 MAX_BATCH_QUERIES = 4
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 STALE_TOLERANCE_SECONDS = 2  # dosya sistemi zaman damgasi yuvarlamasi
+# Brifing her sohbetin basinda baglama girer; kisa kalmali (RAG_GERI_BILDIRIM: baglami sisirme).
+BRIEF_MAX_CHARS = 1500
+BRIEF_NOTES = 5
+BRIEF_DOCS = 8
 
 
 def _check_date(name, value):
@@ -35,8 +41,9 @@ def _ago(seconds):
 
 
 class KnowledgeService:
-    def __init__(self, runtime, config_loader=projects.load_config, notes_dir=projects.NOTES_DIR):
+    def __init__(self, runtime, config_loader=projects.load_config, notes_dir=projects.NOTES_DIR, scope=None):
         self.runtime = runtime
+        self.scope = scope or Scope.admin()  # bu baglantinin gorebildigi projeler (scope.py)
         self.config_loader = config_loader
         self.notes_dir = notes_dir
         self.sync_lock = threading.Lock()  # elle sync, add_note ve izleyici ayni anda indekslemesin
@@ -44,25 +51,46 @@ class KnowledgeService:
         self.agent_factory = None  # ask araci; testler sahte ajan verir
         self.project_hints = True  # proje verilmeyen aramada baska projeye uyma notu (routing.py)
 
+    def scoped(self, scope):
+        """Ayni runtime, kilit ve senkron durumunu paylasan, yalnizca scope'un projelerini goren kopya.
+        Workspace baglantilari bunu kullanir; ask ajani da cagrildigi kopyanin kapsamini devralir."""
+        view = copy.copy(self)
+        view.scope = scope
+        return view
+
     def _config(self):
         return self.config_loader()
 
     def _projects(self):
-        return {k: v for k, v in self._config().items() if not k.startswith("_")}
+        """Kapsamin gorebildigi projeler; disaridakiler hic yokmus gibi davranilir."""
+        return {k: v for k, v in self._config().items() if not k.startswith("_") and self.scope.can_read(k)}
 
     def resolve_project(self, project):
-        """Proje verilmezse: config'teki _default_project, o yoksa tek proje tanimliysa o, degilse hepsi."""
+        """Proje verilmezse: kapsamin varsayilani, config'teki _default_project, tek proje varsa o,
+        degilse None (kapsamdaki tum projeler; bkz. _project_filter)."""
         raw = self._config()
-        config = {k: v for k, v in raw.items() if not k.startswith("_")}
+        config = self._projects()
         if project:
             if project not in config:
+                if not self.scope.is_admin:  # baska workspace'teki projenin varligi belli edilmez
+                    raise ValueError(f"Bu workspace'te '{project}' adli proje yok. Erisilebilir projeler: "
+                                     f"{', '.join(sorted(config)) or '(yok)'}")
                 raise ValueError(f"Bilinmeyen proje: {project}. Tanimli projeler: {', '.join(sorted(config)) or '(yok)'}")
             return project
+        if self.scope.default in config:
+            return self.scope.default
         if raw.get("_default_project") in config:
             return raw["_default_project"]
         if len(config) == 1:
             return next(iter(config))
-        return None  # tum projelerde ara
+        return None  # kapsamdaki tum projelerde ara
+
+    def _project_filter(self, project):
+        """resolve_project sonucunu Qdrant filtresine cevirir: None, yoneticide 'tum projeler',
+        workspace'te 'kapsamdaki projelerden biri' olur. Filtresiz arama yalnizca yoneticide var."""
+        if project or self.scope.is_admin:
+            return project
+        return tuple(sorted(self._projects()))
 
     def _require_project(self, project):
         project = self.resolve_project(project)
@@ -70,12 +98,24 @@ class KnowledgeService:
             raise ValueError("Birden fazla proje var; project parametresini verin.")
         return project
 
+    def _require_writable(self, project):
+        project = self._require_project(project)
+        if not self.scope.can_write(project):
+            raise ValueError(f"'{project}' bu workspace'te salt okunur; not, belge ve senkron yazilamaz.")
+        return project
+
     def list_projects(self):
         config = self._projects()
         if not config:
             return "Tanimli proje yok. knowledge_projects.json dosyasina bir proje ekleyin."
-        lines = [f"- {name}: {settings.get('description', '')} ({settings.get('root')})".rstrip() for name, settings in sorted(config.items())]
-        return "Tanimli projeler:\n" + "\n".join(lines)
+
+        def line(name, settings):
+            if not self.scope.is_admin:  # diskteki kok yolu workspace baglantisina gosterilmez
+                mode = "" if self.scope.can_write(name) else " [salt okunur]"
+                return f"- {name}: {settings.get('description', '')}".rstrip(": ") + mode
+            return f"- {name}: {settings.get('description', '')} ({settings.get('root')})".rstrip()
+
+        return "Tanimli projeler:\n" + "\n".join(line(name, settings) for name, settings in sorted(config.items()))
 
     # --- arama -------------------------------------------------------------
 
@@ -91,7 +131,7 @@ class KnowledgeService:
         _check_date("modified_after", modified_after)
         _check_date("modified_before", modified_before)
         top_k = max(1, min(int(top_k), 15))
-        options = dict(project=self.resolve_project(project), doc_type=doc_type, path_prefix=path_prefix,
+        options = dict(project=self._project_filter(self.resolve_project(project)), doc_type=doc_type, path_prefix=path_prefix,
                        modified_after=modified_after, modified_before=modified_before)
         # Proje verilmediyse soru baska projeye daha iyi uyuyor mu diye bakilir (routing.py); sadece not duser.
         hint_projects = sorted(self._projects()) if not project and self.project_hints else []
@@ -110,7 +150,7 @@ class KnowledgeService:
         return "\n\n======\n\n".join(sections)
 
     def _with_hint(self, text, query, current, projects, results):
-        if len(projects) < 2:
+        if len(projects) < 2 or isinstance(current, tuple):  # kapsamdaki tum projelerde arandiysa ipucu anlamsiz
             return text
         best = max((r["rerank_score"] for r in results), default=0.0)
         hint = routing.project_hint(self.runtime.client(), self.runtime.embedder(), self.runtime.reranker(),
@@ -163,7 +203,7 @@ class KnowledgeService:
     # --- belgeler ----------------------------------------------------------
 
     def list_documents(self, project=None):
-        project = self.resolve_project(project)
+        project = self._project_filter(self.resolve_project(project))
         rows = store.scroll_all(self.runtime.client(), store.project_filter(project=project),
                                 ("source_id", "path", "doc_type", "modified_at"))
         sources = store.summarize_sources(rows)
@@ -217,6 +257,50 @@ class KnowledgeService:
                       for s in latest(notes, 5)]
         return "\n".join(lines)
 
+    def brief(self, project=None):
+        """Yeni sohbetin ilk adimi: 'nerede kalmistik'. Kapsamdaki projeler, son notlar (yerini yenisi
+        almislar haric) ve son degisen belgeler; LLM yok, BRIEF_MAX_CHARS'i gecmez. Turlu kayitlar
+        (karar, acik is) plan H2'de eklenecek."""
+        resolved = self.resolve_project(project)
+        names = [resolved] if resolved else sorted(self._projects())
+        if not names:
+            return "Bu baglantida proje yok."
+        rows = store.scroll_all(self.runtime.client(), store.project_filter(project=tuple(names)),
+                                ("source_id", "project", "path", "doc_type", "modified_at", "section", "superseded_by"))
+        sources = {}
+        for row in rows:
+            entry = sources.setdefault(row["source_id"], dict(row, title=None))
+            if row.get("section") and not entry["title"]:
+                entry["title"] = row["section"].split(" > ")[0]
+            if row.get("superseded_by"):
+                entry["superseded_by"] = row["superseded_by"]
+
+        def newest(items, n):
+            return sorted(items, key=lambda e: e.get("modified_at") or "", reverse=True)[:n]
+
+        def label(entry):
+            name = entry["path"] if len(names) == 1 else f"{entry['project']}: {entry['path']}"
+            return f"- {(entry.get('modified_at') or '?')[:10]} {name}"
+
+        config = self._projects()
+        header = "# Brifing" + ("" if self.scope.is_admin else f" · workspace {self.scope.name}")
+        lines = [header, ""]
+        for name in names:
+            description = config.get(name, {}).get("description", "")
+            mode = "" if self.scope.can_write(name) else " [salt okunur]"
+            lines.append(f"Proje {name}{mode}" + (f": {description}" if description else ""))
+        notes = [e for e in sources.values() if e["doc_type"] == "note" and not e.get("superseded_by")]
+        docs = [e for e in sources.values() if e["doc_type"] == "doc"]
+        lines += ["", "Son notlar (kararlar ve ilerleme):"]
+        lines += [label(e) + (f": {e['title']}" if e["title"] else "") for e in newest(notes, BRIEF_NOTES)] or ["- (not yok)"]
+        lines += ["", "Son degisen belgeler:"]
+        lines += [label(e) for e in newest(docs, BRIEF_DOCS)] or ["- (belge yok)"]
+        lines += ["", "Ayrinti icin search; bir notun tamami icin get_document. Is bitince add_note ile kaydet."]
+        text = "\n".join(lines)
+        if len(text) > BRIEF_MAX_CHARS:
+            text = text[:BRIEF_MAX_CHARS].rsplit("\n", 1)[0] + "\n[... kisaltildi]"
+        return text
+
     # --- indeks ------------------------------------------------------------
 
     def index_status(self, project=None):
@@ -251,7 +335,7 @@ class KnowledgeService:
         return "\n\n".join(blocks)
 
     def sync_project(self, project=None, full=False):
-        project = self._require_project(project)
+        project = self._require_writable(project)
         report = self._sync(project, full=full)
         return (f"{project}: {len(report['indexed'])} dosya indekslendi ({report['chunks']} parca), "
                 f"{len(report['removed'])} dosya kaldirildi.")
@@ -269,7 +353,7 @@ class KnowledgeService:
     # --- yazma -------------------------------------------------------------
 
     def add_note(self, title, body, project=None, supersedes=None):
-        project = self._require_project(project)
+        project = self._require_writable(project)
         if not title.strip() or not body.strip():
             raise ValueError("title ve body bos olamaz")
         old_path = None
@@ -297,7 +381,7 @@ class KnowledgeService:
     def add_document(self, name, content, project=None, overwrite=False):
         """Claude'un yazdigi tam bir belgeyi (plan, ozet, rapor) motorun not klasorune
         'notes/belgeler/' altina yazar ve indeksler. Proje reposuna dokunmaz."""
-        project = self._require_project(project)
+        project = self._require_writable(project)
         if not name.strip() or not content.strip():
             raise ValueError("name ve content bos olamaz")
         rel = projects.document_relpath(name)

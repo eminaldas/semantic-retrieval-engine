@@ -40,6 +40,7 @@ flowchart LR
 
 ### MCP tools
 
+`brief` (where we left off: latest live notes and recently changed documents, ~1,500 chars) ·
 `search` (filters: folder or file, date range, doc type; 2-4 questions per call) · `ask` (the research
 agent answers with citations or says it is not in the documents) · `overview` ·
 `list_documents` · `get_document` · `add_note` (can supersede an older note) · `add_document` ·
@@ -47,7 +48,9 @@ agent answers with citations or says it is not in the documents) · `overview` �
 
 The server speaks MCP over stdio (Claude Code) and over Streamable HTTP (claude.ai custom
 connectors) with token or OAuth 2.1 + PKCE authentication (dynamic client registration and
-refresh tokens, verified with a claude.ai connector). It is written without the MCP SDK.
+refresh tokens, verified with a claude.ai connector). It is written without the MCP SDK. It also
+serves one prompt, `devam-et`, which claude.ai offers in the "+" menu: it pastes the brief into a
+new chat so the conversation picks up where the last one stopped.
 
 ## Measured, not guessed
 
@@ -130,7 +133,7 @@ queries out of the spans. When tracing is off the search path does no extra work
 ```bash
 docker compose up -d qdrant phoenix          # Neo4j is only needed for the GraphRAG core
 python -m venv .venv && .venv/Scripts/pip install -r backend/requirements.txt
-cp .env.example .env                         # GEMINI_API_KEY (optional), MCP_HTTP_TOKEN
+cp .env.example .env                         # GEMINI_API_KEY (optional), MCP_HTTP_TOKEN, MCP_OAUTH_PASSWORD
 cp knowledge_projects.example.json knowledge_projects.json   # point "root" at your project
 python -m backend.knowledge.sync my-project  # index; add --full after model changes
 claude mcp add rag -- python -m backend.mcp.server            # Claude Code, stdio

@@ -261,6 +261,18 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
     return Handler
 
 
+def oauth_password(env, token):
+    """OAuth giris sayfasinin parolasi. MCP_OAUTH_PASSWORD verilmisse o; verilmemisse eski davranis
+    (parola = MCP_HTTP_TOKEN) uyariyla surer. Ayri olmali: giris sayfasina yazilan parola sizarsa
+    tam yetkili API anahtari da sizmis olmasin. Doner: (parola, uyari ya da None)."""
+    password = env.get("MCP_OAUTH_PASSWORD", "")
+    if not password:
+        return token, "UYARI: MCP_OAUTH_PASSWORD tanimli degil; OAuth giris parolasi olarak MCP_HTTP_TOKEN kullaniliyor."
+    if hmac.compare_digest(password.encode(), token.encode()):
+        raise ValueError("MCP_OAUTH_PASSWORD, MCP_HTTP_TOKEN ile ayni olmamali")
+    return password, None
+
+
 def build_server(mcp_server, token, host="127.0.0.1", port=DEFAULT_PORT, oauth=None, public_url=None):
     if not token or len(token) < 24:
         raise ValueError("MCP_HTTP_TOKEN en az 24 karakter olmali (.env). Ornek: python -c \"import secrets; print(secrets.token_urlsafe(32))\"")
@@ -287,7 +299,10 @@ def main():
         print("Izleme acik: Phoenix (rag-mcp projesi).", file=sys.stderr, flush=True)
     token = os.environ.get("MCP_HTTP_TOKEN", "")
     try:
-        oauth = OAuthProvider(token, store_path=os.path.join(PROJECT_ROOT, "artifacts", "oauth", "store.json"))
+        password, warning = oauth_password(os.environ, token)
+        if warning:
+            print(warning, file=sys.stderr, flush=True)
+        oauth = OAuthProvider(password, store_path=os.path.join(PROJECT_ROOT, "artifacts", "oauth", "store.json"))
         runtime = Runtime()
         service = KnowledgeService(runtime)
         httpd = build_server(MCPServer(service), token, port=args.port,

@@ -7,7 +7,7 @@ ihtiyac duydugu parcalari saglar:
 - RFC 7591 dinamik istemci kaydi (claude.ai kendini /register ile kaydeder)
 - Authorization code + PKCE (yalnizca S256) ve donen (rotating) refresh token
 
-Tek kullanicili: /authorize sayfasinda sahibin parolasi istenir (MCP_HTTP_TOKEN).
+Tek kullanicili: /authorize sayfasinda sahibin parolasi istenir (MCP_OAUTH_PASSWORD; yoksa MCP_HTTP_TOKEN).
 redirect_uri yalnizca claude.ai/claude.com (https) ya da loopback olabilir. Token'lar
 diskte duz metin degil, yalnizca sha256 ozetleri olarak tutulur."""
 

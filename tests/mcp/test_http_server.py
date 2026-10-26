@@ -38,6 +38,15 @@ def _post(url, body, token=TOKEN):
         return exc.code, None
 
 
+def test_oauth_password_is_separate_from_api_token():
+    token = "t" * 32
+    assert http_server.oauth_password({"MCP_OAUTH_PASSWORD": "o" * 32}, token) == ("o" * 32, None)
+    password, warning = http_server.oauth_password({}, token)
+    assert password == token and warning
+    with pytest.raises(ValueError):
+        http_server.oauth_password({"MCP_OAUTH_PASSWORD": token}, token)
+
+
 def test_rejects_short_token():
     with pytest.raises(ValueError):
         http_server.build_server(MCPServer(FakeService()), "kisa", port=0)
