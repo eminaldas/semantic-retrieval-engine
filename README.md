@@ -148,6 +148,11 @@ Per-project options in `knowledge_projects.json`: `include`/`exclude` globs, `co
 the address they were issued for (RFC 8707 `resource`), so a workspace token does not open `/mcp` or
 another workspace, and `MCP_HTTP_TOKEN` only opens `/mcp`. Check the section with
 `python -m backend.knowledge.workspaces`; the server refuses to start if it is invalid.
+`"external_llm": false` keeps a workspace's documents away from Gemini (the `ask` tool is hidden)
+and `ask_daily_usd` caps `ask` spending per workspace per day (in memory, resets on restart).
+Every tool call is written to `artifacts/audit/mcp_audit.jsonl` with time, workspace, client, tool,
+project, result and duration, but no queries or content (`RAG_AUDIT=0` turns it off). Phoenix spans
+carry `rag.workspace` and `rag.client`.
 
 ## Layout
 

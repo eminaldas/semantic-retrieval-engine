@@ -267,6 +267,12 @@ class OAuthProvider:
             "scope": SCOPE,
         }
 
+    def client_of(self, token):
+        """Gecerli access token'in istemci kimligi (denetim gunlugu icin); yoksa None."""
+        with self._lock:
+            entry = self._access.get(_digest(token)) if token else None
+            return entry["client_id"] if entry else None
+
     def validate_access_token(self, token, resource=LEGACY_RESOURCE):
         """Token gecerli ve bu resource yolu icin verilmisse True (RFC 8707 audience kontrolu)."""
         if not token:

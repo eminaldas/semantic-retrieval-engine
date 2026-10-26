@@ -49,3 +49,19 @@ def test_all_errors_are_reported_together():
     with pytest.raises(ValueError) as exc:
         _load({"x": {"projects": {"c": "read"}}, "y": {"projects": {"a": "boss"}}})
     assert "x: 'c'" in str(exc.value) and "y: 'a'" in str(exc.value)
+
+
+def test_external_llm_and_ask_budget_reach_the_scope():
+    scope = _load({"w": {"projects": {"a": "write"}, "external_llm": False, "ask_daily_usd": 0.5}})["w"].scope
+    assert not scope.external_llm and scope.ask_daily_usd == 0.5
+    assert _load({"w": {"projects": {"a": "write"}}})["w"].scope.external_llm  # varsayilan acik
+
+
+@pytest.mark.parametrize("extra, message", [
+    ({"external_llm": "no"}, "'external_llm' true ya da false"),
+    ({"ask_daily_usd": -1}, "'ask_daily_usd' sifir ya da pozitif"),
+    ({"ask_daily_usd": True}, "'ask_daily_usd' sifir ya da pozitif"),
+])
+def test_invalid_policy_fields_are_rejected(extra, message):
+    with pytest.raises(ValueError, match=message):
+        _load({"w": {"projects": {"a": "write"}, **extra}})
