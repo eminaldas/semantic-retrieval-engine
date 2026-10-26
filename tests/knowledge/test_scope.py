@@ -136,4 +136,41 @@ def test_read_only_workspace_hides_write_tools():
                             "params": {"name": "add_note", "arguments": {"title": "t", "body": "b"}}})["result"]
     assert result["isError"]
     full = MCPServer(_service())
-    assert len(full.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/list"})["result"]["tools"]) == 10
+    assert len(full.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/list"})["result"]["tools"]) == 11
+
+
+class _Point:
+    def __init__(self, payload):
+        self.payload = payload
+
+
+class _Client:
+    def __init__(self, rows):
+        self.rows, self.filters = rows, []
+
+    def scroll(self, collection_name, scroll_filter, limit, offset, with_payload, with_vectors):
+        self.filters.append(scroll_filter)
+        return [_Point(r) for r in self.rows], None
+
+
+def _row(project, path, doc_type, modified, section="", superseded_by=None):
+    return {"source_id": f"{project}:{path}", "project": project, "path": path, "doc_type": doc_type,
+            "modified_at": modified, "section": section, "superseded_by": superseded_by}
+
+
+def test_brief_lists_live_notes_and_recent_docs_within_scope():
+    rows = [_row("b", "notes/n1.md", "note", "2026-10-20T10:00:00Z", "Eski esik"),
+            _row("b", "notes/n1.md", "note", "2026-10-20T10:00:00Z", "Eski esik > Ayrinti",
+                 superseded_by="notes/n2.md"),
+            _row("b", "notes/n2.md", "note", "2026-10-25T10:00:00Z", "Yeni esik 0,05"),
+            _row("c", "PLAN.md", "doc", "2026-10-24T10:00:00Z", "Plan")]
+    client = _Client(rows)
+    service = _service(Scope.workspace("w", read=["b"], write=["c"]))
+    service.runtime = type("R", (), {"client": lambda self: client})()
+    text = service.brief()
+    assert text.startswith("# Brifing · workspace w") and "Proje b [salt okunur]" in text and "Proje c" in text
+    assert "2026-10-25 b: notes/n2.md: Yeni esik 0,05" in text and "n1.md" not in text
+    assert "2026-10-24 c: PLAN.md" in text and len(text) <= 1500
+    assert client.filters[0].must[0].match.any == ["b", "c"]
+    with pytest.raises(ValueError):
+        service.brief(project="a")

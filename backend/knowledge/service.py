@@ -15,6 +15,10 @@ from backend.shared import tracing
 MAX_BATCH_QUERIES = 4
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 STALE_TOLERANCE_SECONDS = 2  # dosya sistemi zaman damgasi yuvarlamasi
+# Brifing her sohbetin basinda baglama girer; kisa kalmali (RAG_GERI_BILDIRIM: baglami sisirme).
+BRIEF_MAX_CHARS = 1500
+BRIEF_NOTES = 5
+BRIEF_DOCS = 8
 
 
 def _check_date(name, value):
@@ -252,6 +256,50 @@ class KnowledgeService:
             lines += [f"- {s['path']} ({(s['modified_at'] or '?')[:10]})" + (" (eski)" if s["source_id"] in replaced else "")
                       for s in latest(notes, 5)]
         return "\n".join(lines)
+
+    def brief(self, project=None):
+        """Yeni sohbetin ilk adimi: 'nerede kalmistik'. Kapsamdaki projeler, son notlar (yerini yenisi
+        almislar haric) ve son degisen belgeler; LLM yok, BRIEF_MAX_CHARS'i gecmez. Turlu kayitlar
+        (karar, acik is) plan H2'de eklenecek."""
+        resolved = self.resolve_project(project)
+        names = [resolved] if resolved else sorted(self._projects())
+        if not names:
+            return "Bu baglantida proje yok."
+        rows = store.scroll_all(self.runtime.client(), store.project_filter(project=tuple(names)),
+                                ("source_id", "project", "path", "doc_type", "modified_at", "section", "superseded_by"))
+        sources = {}
+        for row in rows:
+            entry = sources.setdefault(row["source_id"], dict(row, title=None))
+            if row.get("section") and not entry["title"]:
+                entry["title"] = row["section"].split(" > ")[0]
+            if row.get("superseded_by"):
+                entry["superseded_by"] = row["superseded_by"]
+
+        def newest(items, n):
+            return sorted(items, key=lambda e: e.get("modified_at") or "", reverse=True)[:n]
+
+        def label(entry):
+            name = entry["path"] if len(names) == 1 else f"{entry['project']}: {entry['path']}"
+            return f"- {(entry.get('modified_at') or '?')[:10]} {name}"
+
+        config = self._projects()
+        header = "# Brifing" + ("" if self.scope.is_admin else f" · workspace {self.scope.name}")
+        lines = [header, ""]
+        for name in names:
+            description = config.get(name, {}).get("description", "")
+            mode = "" if self.scope.can_write(name) else " [salt okunur]"
+            lines.append(f"Proje {name}{mode}" + (f": {description}" if description else ""))
+        notes = [e for e in sources.values() if e["doc_type"] == "note" and not e.get("superseded_by")]
+        docs = [e for e in sources.values() if e["doc_type"] == "doc"]
+        lines += ["", "Son notlar (kararlar ve ilerleme):"]
+        lines += [label(e) + (f": {e['title']}" if e["title"] else "") for e in newest(notes, BRIEF_NOTES)] or ["- (not yok)"]
+        lines += ["", "Son degisen belgeler:"]
+        lines += [label(e) for e in newest(docs, BRIEF_DOCS)] or ["- (belge yok)"]
+        lines += ["", "Ayrinti icin search; bir notun tamami icin get_document. Is bitince add_note ile kaydet."]
+        text = "\n".join(lines)
+        if len(text) > BRIEF_MAX_CHARS:
+            text = text[:BRIEF_MAX_CHARS].rsplit("\n", 1)[0] + "\n[... kisaltildi]"
+        return text
 
     # --- indeks ------------------------------------------------------------
 
