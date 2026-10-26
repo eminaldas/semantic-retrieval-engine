@@ -26,10 +26,11 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
-from backend.mcp.oauth import OAuthError
+from backend.mcp.oauth import LEGACY_RESOURCE, OAuthError
 from backend.mcp.server import MCPServer, _error
 
-MCP_PATH = "/mcp"
+MCP_PATH = "/mcp"  # yonetici: tum projeler
+WORKSPACE_PATH = "/w/{name}/mcp"  # workspace: yalnizca config'teki projeleri (backend/knowledge/workspaces.py)
 DEFAULT_PORT = 47821
 MAX_BODY_BYTES = 1_000_000
 RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource"
@@ -42,7 +43,7 @@ LOGIN_PAGE = """<!doctype html>
 input[type=password]{{width:100%;padding:10px;font-size:16px;box-sizing:border-box}}
 button{{margin-top:12px;padding:10px 18px;font-size:16px}}.err{{color:#b00020}}</style></head>
 <body><h2>Semantic Retrieval Engine</h2>
-<p><b>{client}</b> bilgi tabanina erisim istiyor. Onaylamak icin sahibin parolasini gir.</p>
+<p><b>{client}</b> bilgi tabanina erisim istiyor: <b>{target}</b>. Onaylamak icin sahibin parolasini gir.</p>
 {error}
 <form method="post" action="/authorize">{hidden}
 <input type="password" name="password" autofocus autocomplete="current-password" required>
@@ -69,8 +70,12 @@ def _basic_credentials(header):
     return unquote(client_id), unquote(secret)
 
 
-def make_handler(mcp_server, token, oauth=None, public_url=None):
+def make_handler(mcp_server, token, oauth=None, public_url=None, workspaces=None):
+    """workspaces: {ad: MCPServer} - her biri WORKSPACE_PATH adresinde, kendi kapsamiyla.
+    Sabit token yalnizca /mcp'de gecer; OAuth token'i yalnizca verildigi adreste."""
     lock = threading.Lock()  # modeller ve Qdrant istemcisi tek istek tek seferde
+    routes = {MCP_PATH: mcp_server}
+    routes.update({WORKSPACE_PATH.format(name=name): server for name, server in (workspaces or {}).items()})
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "semantic-retrieval-engine"
@@ -96,11 +101,36 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
                 return public_url.rstrip("/")
             return "http://" + self.headers.get("Host", "127.0.0.1")
 
-        def _authorized(self):
+        def _target(self):
+            """Istegin MCP adresi (routes'ta varsa) ya da None."""
+            route = self._route().rstrip("/") or "/"
+            return route if route in routes else None
+
+        def _resource_path(self, value):
+            """RFC 8707 resource degeri -> bizim adres yolu. Bos: eski davranis (/mcp). Baska sunucuya ya da
+            tanimsiz bir workspace'e ait resource reddedilir (invalid_target)."""
+            if not value:
+                return LEGACY_RESOURCE
+            parsed = urlparse(value.strip())
+            issuer = urlparse(self._issuer())
+            path = parsed.path.rstrip("/") or "/"
+            if (parsed.scheme.lower(), (parsed.netloc or "").lower()) != (issuer.scheme, issuer.netloc.lower()) \
+                    or parsed.query or parsed.fragment or path not in routes:
+                raise OAuthError("invalid_target", "resource bu sunucunun bilinen bir MCP adresi degil")
+            return path
+
+        @staticmethod
+        def _target_label(path):
+            if path == MCP_PATH:
+                return "tum projeler (yonetici)"
+            return f"workspace {path.split('/')[2]}"
+
+        def _authorized(self, target=MCP_PATH):
             # claude.ai'de "No sign-in" + ozel istek basligi yolu icin sabit token X-API-Key'de de kabul edilir
             # _auth_note hangi yolun kullanildigini loglar (token'in kendisi asla loglanmaz)
             api_key = self.headers.get("X-API-Key", "").strip()
-            if api_key and hmac.compare_digest(api_key.encode(), token.encode()):
+            static_ok = target == MCP_PATH  # sabit token yonetici anahtari; workspace adreslerinde gecmez
+            if static_ok and api_key and hmac.compare_digest(api_key.encode(), token.encode()):
                 self._auth_note = "auth=apikey"
                 return True
             header = self.headers.get("Authorization", "")
@@ -109,10 +139,10 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
             if scheme.lower() != "bearer" or not presented:
                 self._auth_note = f"auth=yok sema={scheme[:10] or '-'} apikey={'yanlis' if api_key else 'yok'}"
                 return False
-            if hmac.compare_digest(presented.encode(), token.encode()):
+            if static_ok and hmac.compare_digest(presented.encode(), token.encode()):
                 self._auth_note = "auth=sabit"
                 return True
-            if oauth is not None and oauth.validate_access_token(presented):
+            if oauth is not None and oauth.validate_access_token(presented, resource=target):
                 self._auth_note = "auth=oauth"
                 return True
             self._auth_note = f"auth=gecersiz uzunluk={len(presented)}"
@@ -129,12 +159,14 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
             self.send_response(status)
             if content_type:
                 self.send_header("Content-Type", content_type)
-            if status == 401 and self._route().startswith(MCP_PATH):
+            target = self._target()
+            if status == 401 and target:
                 params = []
                 if self._invalid_token:  # RFC 6750: istemci refresh token'a gecsin
                     params.append('error="invalid_token"')
-                if oauth is not None:
-                    params.append(f'resource_metadata="{self._issuer()}{RESOURCE_METADATA_PATH}"')
+                if oauth is not None:  # RFC 9728: workspace adresinin metadatasi yol sonekiyle
+                    suffix = "" if target == MCP_PATH else target
+                    params.append(f'resource_metadata="{self._issuer()}{RESOURCE_METADATA_PATH}{suffix}"')
                 self.send_header("WWW-Authenticate", " ".join(["Bearer", ", ".join(params)]).strip())
             for name, value in (headers or {}).items():
                 self.send_header(name, value)
@@ -149,13 +181,14 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
                 return None
             return self.rfile.read(length)
 
-        def _login_page(self, params, client_name, error="", status=200):
+        def _login_page(self, params, client_name, resource, error="", status=200):
             hidden = "".join(
                 f'<input type="hidden" name="{name}" value="{html.escape(params[name], quote=True)}">'
                 for name in AUTHORIZE_FIELDS if name in params
             )
             page = LOGIN_PAGE.format(
                 client=html.escape(client_name),
+                target=html.escape(self._target_label(resource)),
                 error=f'<p class="err">{html.escape(error)}</p>' if error else "",
                 hidden=hidden,
             )
@@ -170,19 +203,26 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
             if route == "/health":
                 return self._send(200, {"status": "ok"})
             if oauth is not None and route.startswith(RESOURCE_METADATA_PATH):
-                return self._send(200, oauth.resource_metadata(self._issuer(), MCP_PATH))
+                suffix = route[len(RESOURCE_METADATA_PATH):].rstrip("/")
+                resource = suffix if suffix in routes else (MCP_PATH if not suffix else None)
+                if resource is None:
+                    return self._send(404, {"error": "not found"})
+                return self._send(200, oauth.resource_metadata(self._issuer(), resource))
             if oauth is not None and route.startswith(SERVER_METADATA_PATH):
                 return self._send(200, oauth.server_metadata(self._issuer()))
             if oauth is not None and route == "/authorize":
                 params = _first_values(urlparse(self.path).query)
                 try:
                     client_name = oauth.check_authorize_request(params)
+                    resource = self._resource_path(params.get("resource"))
                 except OAuthError as exc:
                     return self._send(exc.status, exc.body())
-                return self._login_page(params, client_name)
-            if route != MCP_PATH:
+                self._auth_note = f"res={resource if params.get('resource') else 'yok'}"
+                return self._login_page(params, client_name, resource)
+            target = self._target()
+            if target is None:
                 return self._send(404, {"error": "not found"})
-            if not self._authorized():
+            if not self._authorized(target):
                 return self._send(401, {"error": "unauthorized"})
             self._send(405, {"error": "SSE akisi desteklenmiyor; POST kullanin"})
 
@@ -195,9 +235,10 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
             route = self._route()
             if oauth is not None and route in ("/register", "/authorize", "/token"):
                 return self._oauth_post(route)
-            if route != MCP_PATH:
+            target = self._target()
+            if target is None:
                 return self._send(404, {"error": "not found"})
-            if not self._authorized():
+            if not self._authorized(target):
                 return self._send(401, {"error": "unauthorized"})
             length = int(self.headers.get("Content-Length") or 0)
             if length <= 0 or length > MAX_BODY_BYTES:
@@ -211,7 +252,7 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
             if isinstance(message, dict):
                 self._auth_note = f"{self._auth_note} rpc={str(message.get('method'))[:40]}".strip()
             with lock:
-                response = mcp_server.handle(message)
+                response = routes[target].handle(message)
             if response is None:
                 return self._send(202)
             self._send(200, response)
@@ -236,9 +277,10 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
                 basic = _basic_credentials(self.headers.get("Authorization", ""))
                 if basic:  # client_secret_basic
                     form["client_id"], form["client_secret"] = basic
-                self._auth_note = f"grant={form.get('grant_type', '-')[:20]}"
+                self._auth_note = f"grant={form.get('grant_type', '-')[:20]} res={form.get('resource') and 'var' or 'yok'}"
                 try:
-                    return self._send(200, oauth.exchange(form))
+                    requested = self._resource_path(form["resource"]) if form.get("resource") else None
+                    return self._send(200, oauth.exchange(form, resource=requested))
                 except OAuthError as exc:
                     self._auth_note += f" hata={exc.error}"
                     return self._send(exc.status, exc.body())
@@ -246,12 +288,14 @@ def make_handler(mcp_server, token, oauth=None, public_url=None):
             password = form.pop("password", "")
             try:
                 client_name = oauth.check_authorize_request(form)
+                resource = self._resource_path(form.get("resource"))
             except OAuthError as exc:
                 return self._send(exc.status, exc.body())
+            self._auth_note = f"res={resource if form.get('resource') else 'yok'}"
             try:
-                code = oauth.approve(form, password)
+                code = oauth.approve(form, password, resource=resource)
             except OAuthError as exc:
-                return self._login_page(form, client_name, error=exc.description, status=exc.status)
+                return self._login_page(form, client_name, resource, error=exc.description, status=exc.status)
             query = {"code": code}
             if form.get("state"):
                 query["state"] = form["state"]
@@ -273,10 +317,11 @@ def oauth_password(env, token):
     return password, None
 
 
-def build_server(mcp_server, token, host="127.0.0.1", port=DEFAULT_PORT, oauth=None, public_url=None):
+def build_server(mcp_server, token, host="127.0.0.1", port=DEFAULT_PORT, oauth=None, public_url=None, workspaces=None):
     if not token or len(token) < 24:
         raise ValueError("MCP_HTTP_TOKEN en az 24 karakter olmali (.env). Ornek: python -c \"import secrets; print(secrets.token_urlsafe(32))\"")
-    return ThreadingHTTPServer((host, port), make_handler(mcp_server, token, oauth=oauth, public_url=public_url))
+    return ThreadingHTTPServer((host, port), make_handler(mcp_server, token, oauth=oauth, public_url=public_url,
+                                                          workspaces=workspaces))
 
 
 def main():
@@ -308,14 +353,16 @@ def main():
         workspaces = load_workspaces(load_config())  # hatali _workspaces sunucuyu actirmaz
         runtime = Runtime()
         service = KnowledgeService(runtime)
-        httpd = build_server(MCPServer(service), token, port=args.port,
-                             oauth=oauth, public_url=os.environ.get("MCP_PUBLIC_URL"))
+        servers = {name: MCPServer(service.scoped(ws.scope), instructions=ws.instructions, workspace=name)
+                   for name, ws in workspaces.items()}
+        httpd = build_server(MCPServer(service), token, port=args.port, oauth=oauth,
+                             public_url=os.environ.get("MCP_PUBLIC_URL"), workspaces=servers)
     except ValueError as exc:
         print(f"HATA: {exc}", file=sys.stderr)
         sys.exit(1)
     print(f"MCP HTTP sunucusu: http://127.0.0.1:{args.port}{MCP_PATH}", file=sys.stderr, flush=True)
-    if workspaces:  # adresleri Asama 3'te acilacak; simdilik yalnizca dogrulanir
-        print(f"Workspace'ler (henuz adressiz): {', '.join(sorted(workspaces))}", file=sys.stderr, flush=True)
+    for name in sorted(workspaces):
+        print(f"  workspace {name}: http://127.0.0.1:{args.port}{WORKSPACE_PATH.format(name=name)}", file=sys.stderr, flush=True)
     threading.Thread(target=_warm_up, args=(runtime, service), daemon=True).start()
     httpd.serve_forever()
 

@@ -197,3 +197,108 @@ def test_wrong_password_rerenders_login(base_url):
     form = urllib.parse.urlencode({**params, "password": "yanlis"}).encode()
     status, _, page = _request(base_url + "/authorize", data=form, method="POST")
     assert status == 401 and "parola yanlis".encode() in page
+
+
+# --- workspace adresleri (RFC 8707 resource) --------------------------------
+
+PUBLIC = "https://rag.example.com"
+WS_RESOURCE = PUBLIC + "/w/haber/mcp"
+
+
+def test_token_is_bound_to_its_resource(provider):
+    client_id = provider.register({"redirect_uris": [REDIRECT]})["client_id"]
+    code = provider.approve(_authorize_params(client_id), PASSWORD, resource="/w/haber/mcp")
+    tokens = provider.exchange(_token_form(client_id, code))
+    assert provider.validate_access_token(tokens["access_token"], resource="/w/haber/mcp")
+    assert not provider.validate_access_token(tokens["access_token"])  # /mcp icin degil
+    with pytest.raises(OAuthError) as exc:  # refresh baska adres isteyemez ve token harcanmaz
+        provider.exchange({"grant_type": "refresh_token", "refresh_token": tokens["refresh_token"]}, resource="/mcp")
+    assert exc.value.error == "invalid_target"
+    refreshed = provider.exchange({"grant_type": "refresh_token", "refresh_token": tokens["refresh_token"]})
+    assert provider.validate_access_token(refreshed["access_token"], resource="/w/haber/mcp")
+
+
+def test_tokens_from_before_resources_stay_on_mcp(tmp_path):
+    from backend.mcp.oauth import _digest
+
+    store = tmp_path / "store.json"
+    store.write_text(json.dumps({"clients": {}, "refresh": {},
+                                 "access": {_digest("eski"): {"client_id": "c", "expires": 9e12}}}))
+    provider = OAuthProvider(PASSWORD, store_path=str(store))
+    assert provider.validate_access_token("eski") and not provider.validate_access_token("eski", resource="/w/a/mcp")
+
+
+class WorkspaceService(FakeService):
+    def search(self, query, project=None, doc_type=None, top_k=6):
+        return f"haber: {query}"
+
+
+@pytest.fixture
+def ws_url():
+    oauth = OAuthProvider(PASSWORD)
+    httpd = http_server.build_server(MCPServer(FakeService()), "t" * 32, port=0, oauth=oauth, public_url=PUBLIC,
+                                     workspaces={"haber": MCPServer(WorkspaceService(), workspace="haber")})
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{httpd.server_address[1]}"
+    httpd.shutdown()
+
+
+def _login(base, resource=None):
+    _, _, body = _request(base + "/register", data=json.dumps({"redirect_uris": [REDIRECT]}).encode(), method="POST")
+    client_id = json.loads(body)["client_id"]
+    params = {**_authorize_params(client_id), **({"resource": resource} if resource else {})}
+    status, _, page = _request(base + "/authorize?" + urllib.parse.urlencode(params))
+    assert status == 200
+    _, headers, _ = _request(base + "/authorize", data=urllib.parse.urlencode({**params, "password": PASSWORD}).encode(),
+                             method="POST")
+    code = urllib.parse.parse_qs(urllib.parse.urlparse(headers["Location"]).query)["code"][0]
+    form = {**_token_form(client_id, code), **({"resource": resource} if resource else {})}
+    _, _, body = _request(base + "/token", data=urllib.parse.urlencode(form).encode(), method="POST")
+    return page, json.loads(body)["access_token"]
+
+
+def _search(base, path, headers):
+    call = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "search", "arguments": {"query": "x"}}}
+    status, resp_headers, body = _request(base + path, data=json.dumps(call).encode(), method="POST",
+                                          headers={"Content-Type": "application/json", **headers})
+    text = json.loads(body)["result"]["content"][0]["text"] if status == 200 else None
+    return status, resp_headers, text
+
+
+def test_workspace_token_only_opens_its_workspace(ws_url):
+    page, access = _login(ws_url, WS_RESOURCE)
+    assert b"workspace haber" in page
+    assert _search(ws_url, "/w/haber/mcp", {"Authorization": f"Bearer {access}"})[2] == "haber: x"
+    status, headers, _ = _search(ws_url, "/mcp", {"Authorization": f"Bearer {access}"})
+    assert status == 401 and 'error="invalid_token"' in headers["WWW-Authenticate"]
+
+
+def test_admin_token_and_static_key_do_not_open_workspaces(ws_url):
+    page, access = _login(ws_url)  # resource gondermeyen istemci: /mcp
+    assert "tum projeler".encode() in page
+    assert _search(ws_url, "/mcp", {"Authorization": f"Bearer {access}"})[2] == "sonuc: x"
+    assert _search(ws_url, "/w/haber/mcp", {"Authorization": f"Bearer {access}"})[0] == 401
+    assert _search(ws_url, "/mcp", {"X-API-Key": "t" * 32})[2] == "sonuc: x"
+    assert _search(ws_url, "/w/haber/mcp", {"X-API-Key": "t" * 32})[0] == 401
+    assert _search(ws_url, "/w/haber/mcp", {"Authorization": "Bearer " + "t" * 32})[0] == 401
+
+
+def test_workspace_metadata_and_challenge(ws_url):
+    status, headers, _ = _request(ws_url + "/w/haber/mcp", data=b"{}", method="POST")
+    assert status == 401
+    assert f'resource_metadata="{PUBLIC}/.well-known/oauth-protected-resource/w/haber/mcp"' in headers["WWW-Authenticate"]
+    _, _, body = _request(ws_url + "/.well-known/oauth-protected-resource/w/haber/mcp")
+    assert json.loads(body)["resource"] == WS_RESOURCE
+    _, _, body = _request(ws_url + "/.well-known/oauth-protected-resource/mcp")
+    assert json.loads(body)["resource"] == PUBLIC + "/mcp"
+    assert _request(ws_url + "/.well-known/oauth-protected-resource/w/yok/mcp")[0] == 404
+    assert _request(ws_url + "/w/yok/mcp", data=b"{}", method="POST")[0] == 404
+
+
+@pytest.mark.parametrize("resource", ["https://evil.example/w/haber/mcp", PUBLIC + "/w/yok/mcp", PUBLIC + "/mcp#x"])
+def test_unknown_resource_is_rejected(ws_url, resource):
+    _, _, body = _request(ws_url + "/register", data=json.dumps({"redirect_uris": [REDIRECT]}).encode(), method="POST")
+    params = {**_authorize_params(json.loads(body)["client_id"]), "resource": resource}
+    status, _, body = _request(ws_url + "/authorize?" + urllib.parse.urlencode(params))
+    assert status == 400 and json.loads(body)["error"] == "invalid_target"

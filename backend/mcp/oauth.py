@@ -6,6 +6,8 @@ ihtiyac duydugu parcalari saglar:
 - RFC 9728 korunan kaynak metadatasi + RFC 8414 yetkilendirme sunucusu metadatasi
 - RFC 7591 dinamik istemci kaydi (claude.ai kendini /register ile kaydeder)
 - Authorization code + PKCE (yalnizca S256) ve donen (rotating) refresh token
+- RFC 8707 resource: her token tek bir MCP adresine (/mcp ya da /w/<ad>/mcp) baglidir; baska adreste
+  gecmez. Adres (yol) dogrulamasini HTTP katmani yapar, burada yalnizca saklanir ve karsilastirilir.
 
 Tek kullanicili: /authorize sayfasinda sahibin parolasi istenir (MCP_OAUTH_PASSWORD; yoksa MCP_HTTP_TOKEN).
 redirect_uri yalnizca claude.ai/claude.com (https) ya da loopback olabilir. Token'lar
@@ -30,6 +32,7 @@ MAX_CLIENTS = 50
 MAX_FAILED_LOGINS = 5
 LOCKOUT_SECONDS = 900
 SCOPE = "mcp"
+LEGACY_RESOURCE = "/mcp"  # resource gondermeyen istemciler ve bu ozellikten onceki token'lar
 # claude.ai kayitta client_secret_post isteyebiliyor; gizli istemciler de desteklenir
 CLIENT_AUTH_METHODS = ("none", "client_secret_post", "client_secret_basic")
 
@@ -183,8 +186,9 @@ class OAuthProvider:
             raise OAuthError("invalid_request", "PKCE (S256) zorunlu")
         return client["client_name"] or "isimsiz istemci"
 
-    def approve(self, params, password):
-        """Parola dogruysa tek kullanimlik authorization code doner."""
+    def approve(self, params, password, resource=LEGACY_RESOURCE):
+        """Parola dogruysa tek kullanimlik authorization code doner; code (ve ondan cikan token'lar)
+        resource yoluna baglanir."""
         self.check_authorize_request(params)
         with self._lock:
             now = self._clock()
@@ -199,19 +203,29 @@ class OAuthProvider:
                 "client_id": params["client_id"],
                 "redirect_uri": params["redirect_uri"],
                 "code_challenge": params["code_challenge"],
+                "resource": resource,
                 "expires": now + CODE_TTL,
             }
         return code
 
-    def exchange(self, form):
+    def exchange(self, form, resource=None):
+        """resource: token isteginde gelen resource'un yolu (yoksa None); verilmisse kodun ya da
+        refresh token'in bagli oldugu yolla ayni olmali."""
         grant = form.get("grant_type")
         if grant == "authorization_code":
-            return self._exchange_code(form)
+            return self._exchange_code(form, resource)
         if grant == "refresh_token":
-            return self._exchange_refresh(form)
+            return self._exchange_refresh(form, resource)
         raise OAuthError("unsupported_grant_type", "yalnizca authorization_code ve refresh_token")
 
-    def _exchange_code(self, form):
+    @staticmethod
+    def _check_resource(entry, requested):
+        bound = entry.get("resource", LEGACY_RESOURCE)
+        if requested is not None and requested != bound:
+            raise OAuthError("invalid_target", "resource, yetkinin verildigi adresle ayni degil")
+        return bound
+
+    def _exchange_code(self, form, resource=None):
         with self._lock:
             entry = self._codes.pop(_digest(form.get("code", "")), None)  # tek kullanimlik
             if entry is None or entry["expires"] < self._clock():
@@ -222,25 +236,28 @@ class OAuthProvider:
             verifier = form.get("code_verifier", "")
             if not verifier or not hmac.compare_digest(pkce_challenge(verifier), entry["code_challenge"]):
                 raise OAuthError("invalid_grant", "PKCE dogrulanamadi")
-            return self._issue(entry["client_id"])
+            return self._issue(entry["client_id"], self._check_resource(entry, resource))
 
-    def _exchange_refresh(self, form):
+    def _exchange_refresh(self, form, resource=None):
         with self._lock:
-            entry = self._refresh.pop(_digest(form.get("refresh_token", "")), None)  # rotasyon
+            key = _digest(form.get("refresh_token", ""))
+            entry = self._refresh.get(key)
             if entry is None or entry["expires"] < self._clock():
                 raise OAuthError("invalid_grant", "refresh token gecersiz ya da suresi dolmus")
             if form.get("client_id") and form["client_id"] != entry["client_id"]:
                 raise OAuthError("invalid_grant", "client_id eslesmiyor")
             self._authenticate_client(entry["client_id"], form.get("client_secret"))
-            return self._issue(entry["client_id"])
+            bound = self._check_resource(entry, resource)
+            del self._refresh[key]  # rotasyon; yalnizca gecerli istekte harcanir
+            return self._issue(entry["client_id"], bound)
 
-    def _issue(self, client_id):
+    def _issue(self, client_id, resource=LEGACY_RESOURCE):
         # cagiran kilidi tutar
         now = self._clock()
         access = secrets.token_urlsafe(32)
         refresh = secrets.token_urlsafe(32)
-        self._access[_digest(access)] = {"client_id": client_id, "expires": now + ACCESS_TTL}
-        self._refresh[_digest(refresh)] = {"client_id": client_id, "expires": now + REFRESH_TTL}
+        self._access[_digest(access)] = {"client_id": client_id, "resource": resource, "expires": now + ACCESS_TTL}
+        self._refresh[_digest(refresh)] = {"client_id": client_id, "resource": resource, "expires": now + REFRESH_TTL}
         self._save()
         return {
             "access_token": access,
@@ -250,9 +267,11 @@ class OAuthProvider:
             "scope": SCOPE,
         }
 
-    def validate_access_token(self, token):
+    def validate_access_token(self, token, resource=LEGACY_RESOURCE):
+        """Token gecerli ve bu resource yolu icin verilmisse True (RFC 8707 audience kontrolu)."""
         if not token:
             return False
         with self._lock:
             entry = self._access.get(_digest(token))
-            return entry is not None and entry["expires"] >= self._clock()
+            return (entry is not None and entry["expires"] >= self._clock()
+                    and entry.get("resource", LEGACY_RESOURCE) == resource)

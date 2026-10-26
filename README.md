@@ -143,9 +143,11 @@ python -m backend.mcp.http_server            # HTTP for claude.ai (127.0.0.1:478
 Per-project options in `knowledge_projects.json`: `include`/`exclude` globs, `contextual`
 (Gemini context sentences), `watch` (folder watcher). `_default_project` sets the default.
 `_workspaces` groups projects into workspaces: each lists its projects as `read` or `write`, a
-`home` project for notes, and optional `instructions`. A connection scoped to a workspace sees only
-those projects. Check the section with `python -m backend.knowledge.workspaces`; the server refuses
-to start if it is invalid.
+`home` project for notes, and optional `instructions`. Each workspace is served at `/w/<name>/mcp`
+(add it to claude.ai as its own connector) and sees only those projects. OAuth tokens are bound to
+the address they were issued for (RFC 8707 `resource`), so a workspace token does not open `/mcp` or
+another workspace, and `MCP_HTTP_TOKEN` only opens `/mcp`. Check the section with
+`python -m backend.knowledge.workspaces`; the server refuses to start if it is invalid.
 
 ## Layout
 
