@@ -2,9 +2,11 @@ services:
   neo4j:
     image: neo4j:5-community
     container_name: otonom_neo4j
+    # Qdrant gibi sadece localhost'a acik: Docker Desktop'in guvenlik duvari kurali yayinlanan portlari
+    # yerel aga (genel profilde de) aciyor, 0.0.0.0'a baglamak parolasiz erisim demek.
     ports:
-      - "7474:7474" # Browser UI
-      - "7687:7687" # Bolt (driver baglantisi)
+      - "127.0.0.1:7474:7474" # Browser UI
+      - "127.0.0.1:7687:7687" # Bolt (driver baglantisi)
     environment:
       - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD}
       - NEO4J_PLUGINS=["graph-data-science"]
@@ -14,9 +16,10 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     container_name: otonom_qdrant
+    # API anahtari yok: 0.0.0.0'a baglanirsa ayni agdaki herkes tum parcalari okuyabilir.
     ports:
-      - "6333:6333" # REST API
-      - "6334:6334" # gRPC
+      - "127.0.0.1:6333:6333" # REST API
+      - "127.0.0.1:6334:6334" # gRPC
     volumes:
       - qdrant_data:/qdrant/storage
 

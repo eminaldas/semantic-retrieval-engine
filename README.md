@@ -130,7 +130,7 @@ queries out of the spans. When tracing is off the search path does no extra work
 ```bash
 docker compose up -d qdrant phoenix          # Neo4j is only needed for the GraphRAG core
 python -m venv .venv && .venv/Scripts/pip install -r backend/requirements.txt
-cp .env.example .env                         # GEMINI_API_KEY (optional), MCP_HTTP_TOKEN
+cp .env.example .env                         # GEMINI_API_KEY (optional), MCP_HTTP_TOKEN, MCP_OAUTH_PASSWORD
 cp knowledge_projects.example.json knowledge_projects.json   # point "root" at your project
 python -m backend.knowledge.sync my-project  # index; add --full after model changes
 claude mcp add rag -- python -m backend.mcp.server            # Claude Code, stdio
