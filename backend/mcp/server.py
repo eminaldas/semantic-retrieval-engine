@@ -165,8 +165,11 @@ WRITE_TOOLS = {"add_note", "add_document", "sync_project"}
 
 
 class MCPServer:
-    def __init__(self, service):
+    def __init__(self, service, instructions=None, workspace=None):
+        """instructions: workspace'e ozel talimat (config); genel talimatin sonuna eklenir."""
         self.service = service
+        header = f"Bu baglanti '{workspace}' workspace'ine aittir; yalnizca onun projelerini gorur. " if workspace else ""
+        self.instructions = INSTRUCTIONS + (f"\n\n{header}{instructions or ''}".rstrip() if header or instructions else "")
         scope = getattr(service, "scope", None)
         # Salt okunur workspace'te yazma araclari listede bile gorunmez (model denemeye kalkmasin).
         hidden = WRITE_TOOLS if scope is not None and scope.read_only else set()
@@ -203,7 +206,7 @@ class MCPServer:
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False}},
             "serverInfo": SERVER_INFO,
-            "instructions": INSTRUCTIONS,
+            "instructions": self.instructions,
         }
 
     def _get_prompt(self, msg_id, params):
