@@ -7,5 +7,13 @@
     "exclude": [".git/**", "**/node_modules/**", "**/.venv/**", "**/venv*/**", "**/site-packages/**"],
     "contextual": false,
     "watch": true
+  },
+  "_workspaces": {
+    "my-workspace": {
+      "description": "Bu baglantinin gorebildigi projeler",
+      "projects": {"my-project": "write"},
+      "home": "my-project",
+      "instructions": "Workspace'e ozel kurallar (istege bagli)."
+    }
   }
 }

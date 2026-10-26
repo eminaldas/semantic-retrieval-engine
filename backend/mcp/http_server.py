@@ -285,8 +285,10 @@ def main():
 
     from dotenv import load_dotenv
 
+    from backend.knowledge.projects import load_config
     from backend.knowledge.runtime import Runtime
     from backend.knowledge.service import KnowledgeService
+    from backend.knowledge.workspaces import load_workspaces
     from backend.mcp.oauth import OAuthProvider
     from backend.shared import tracing
     from backend.shared.paths import PROJECT_ROOT
@@ -303,6 +305,7 @@ def main():
         if warning:
             print(warning, file=sys.stderr, flush=True)
         oauth = OAuthProvider(password, store_path=os.path.join(PROJECT_ROOT, "artifacts", "oauth", "store.json"))
+        workspaces = load_workspaces(load_config())  # hatali _workspaces sunucuyu actirmaz
         runtime = Runtime()
         service = KnowledgeService(runtime)
         httpd = build_server(MCPServer(service), token, port=args.port,
@@ -311,6 +314,8 @@ def main():
         print(f"HATA: {exc}", file=sys.stderr)
         sys.exit(1)
     print(f"MCP HTTP sunucusu: http://127.0.0.1:{args.port}{MCP_PATH}", file=sys.stderr, flush=True)
+    if workspaces:  # adresleri Asama 3'te acilacak; simdilik yalnizca dogrulanir
+        print(f"Workspace'ler (henuz adressiz): {', '.join(sorted(workspaces))}", file=sys.stderr, flush=True)
     threading.Thread(target=_warm_up, args=(runtime, service), daemon=True).start()
     httpd.serve_forever()
 

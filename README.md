@@ -142,6 +142,10 @@ python -m backend.mcp.http_server            # HTTP for claude.ai (127.0.0.1:478
 
 Per-project options in `knowledge_projects.json`: `include`/`exclude` globs, `contextual`
 (Gemini context sentences), `watch` (folder watcher). `_default_project` sets the default.
+`_workspaces` groups projects into workspaces: each lists its projects as `read` or `write`, a
+`home` project for notes, and optional `instructions`. A connection scoped to a workspace sees only
+those projects. Check the section with `python -m backend.knowledge.workspaces`; the server refuses
+to start if it is invalid.
 
 ## Layout
 
