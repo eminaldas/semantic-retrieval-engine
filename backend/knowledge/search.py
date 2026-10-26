@@ -158,20 +158,22 @@ def _retrieve_and_rerank(qdrant_client, embedding_model, cross_encoder, query, f
 
 def search(qdrant_client, embedding_model, cross_encoder, query, project=None, doc_type=None, top_k=5, candidates=20,
            threshold=RELEVANCE_THRESHOLD, path_prefix=None, modified_after=None, modified_before=None,
-           max_per_source=MAX_PER_SOURCE, subqueries=None, retriever=None):
-    """subqueries: soru parcalari (decompose.decompose). Verilirse soru ve her parca ayri getirilip
+           max_per_source=MAX_PER_SOURCE, subqueries=None, retriever=None, kind=None):
+    """kind: sadece bu turdeki notlar (projects.KINDS).
+    subqueries: soru parcalari (decompose.decompose). Verilirse soru ve her parca ayri getirilip
     kendi sorgusuna gore rerank edilir, sonra sirayla birlestirilir.
     retriever: aday toplama (client, dense_query, query, flt, limit) -> liste; varsayilan
     store.hybrid_search. Deneme yollari icin (m3.make_retriever)."""
     filters = {k: v for k, v in dict(project=project, doc_type=doc_type, path_prefix=path_prefix,
-                                     modified_after=modified_after, modified_before=modified_before).items() if v}
+                                     modified_after=modified_after, modified_before=modified_before,
+                                     kind=kind).items() if v}
     queries = [query] + [q for q in (subqueries or []) if q.strip() and q.strip() != query.strip()]
     with tracing.span("search", tracing.CHAIN, **{"input.value": tracing.clip(query), "metadata": filters,
                                                   "rag.project": project, "rag.top_k": top_k,
                                                   "rag.threshold": threshold,
                                                   "rag.subqueries": queries[1:] or None}) as root:
         flt = store.project_filter(project=project, doc_type=doc_type, path_prefix=path_prefix,
-                                   modified_after=modified_after, modified_before=modified_before)
+                                   modified_after=modified_after, modified_before=modified_before, kind=kind)
         # Pencereler birlesince sonuc azalir; birkac yedek aday tutulur.
         ranked_lists = [_retrieve_and_rerank(qdrant_client, embedding_model, cross_encoder, q, flt, candidates,
                                              top_k + 3, max_per_source, retriever or store.hybrid_search)
