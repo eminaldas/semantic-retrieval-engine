@@ -81,10 +81,11 @@ def make_handler(mcp_server, token, oauth=None, public_url=None, workspaces=None
         server_version = "semantic-retrieval-engine"
         _auth_note = ""
         _invalid_token = False
+        _client = None  # denetim gunlugu icin istemci etiketi; token asla yazilmaz
 
         def parse_request(self):
             # handler keep-alive baglantida tekrar kullanilir: istek basina durum sifirlanir
-            self._auth_note, self._invalid_token = "", False
+            self._auth_note, self._invalid_token, self._client = "", False, None
             return super().parse_request()
 
         def log_message(self, fmt, *args):
@@ -131,7 +132,7 @@ def make_handler(mcp_server, token, oauth=None, public_url=None, workspaces=None
             api_key = self.headers.get("X-API-Key", "").strip()
             static_ok = target == MCP_PATH  # sabit token yonetici anahtari; workspace adreslerinde gecmez
             if static_ok and api_key and hmac.compare_digest(api_key.encode(), token.encode()):
-                self._auth_note = "auth=apikey"
+                self._auth_note, self._client = "auth=apikey", "apikey"
                 return True
             header = self.headers.get("Authorization", "")
             scheme, _, presented = header.partition(" ")
@@ -140,10 +141,11 @@ def make_handler(mcp_server, token, oauth=None, public_url=None, workspaces=None
                 self._auth_note = f"auth=yok sema={scheme[:10] or '-'} apikey={'yanlis' if api_key else 'yok'}"
                 return False
             if static_ok and hmac.compare_digest(presented.encode(), token.encode()):
-                self._auth_note = "auth=sabit"
+                self._auth_note, self._client = "auth=sabit", "sabit"
                 return True
             if oauth is not None and oauth.validate_access_token(presented, resource=target):
                 self._auth_note = "auth=oauth"
+                self._client = f"oauth:{(oauth.client_of(presented) or '?')[:8]}"
                 return True
             self._auth_note = f"auth=gecersiz uzunluk={len(presented)}"
             self._invalid_token = True
@@ -252,7 +254,7 @@ def make_handler(mcp_server, token, oauth=None, public_url=None, workspaces=None
             if isinstance(message, dict):
                 self._auth_note = f"{self._auth_note} rpc={str(message.get('method'))[:40]}".strip()
             with lock:
-                response = routes[target].handle(message)
+                response = routes[target].handle(message, client=self._client)
             if response is None:
                 return self._send(202)
             self._send(200, response)
@@ -334,6 +336,7 @@ def main():
     from backend.knowledge.runtime import Runtime
     from backend.knowledge.service import KnowledgeService
     from backend.knowledge.workspaces import load_workspaces
+    from backend.mcp import audit
     from backend.mcp.oauth import OAuthProvider
     from backend.shared import tracing
     from backend.shared.paths import PROJECT_ROOT
@@ -353,9 +356,10 @@ def main():
         workspaces = load_workspaces(load_config())  # hatali _workspaces sunucuyu actirmaz
         runtime = Runtime()
         service = KnowledgeService(runtime)
-        servers = {name: MCPServer(service.scoped(ws.scope), instructions=ws.instructions, workspace=name)
+        log = audit.from_env()  # artifacts/audit/mcp_audit.jsonl; icerik yazilmaz
+        servers = {name: MCPServer(service.scoped(ws.scope), instructions=ws.instructions, workspace=name, audit=log)
                    for name, ws in workspaces.items()}
-        httpd = build_server(MCPServer(service), token, port=args.port, oauth=oauth,
+        httpd = build_server(MCPServer(service, audit=log), token, port=args.port, oauth=oauth,
                              public_url=os.environ.get("MCP_PUBLIC_URL"), workspaces=servers)
     except ValueError as exc:
         print(f"HATA: {exc}", file=sys.stderr)

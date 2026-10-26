@@ -122,6 +122,14 @@ class TestToolSpans:
         assert attrs["tool.name"] == "search"
         assert json.loads(attrs["tool.parameters"]) == {"query": "esik"}
         assert attrs["output.value"] == "sonuc: esik"
+        assert attrs["rag.workspace"] == "*" and "rag.client" not in attrs
+
+    def test_tool_span_names_workspace_and_client(self, spans):
+        srv.MCPServer(FakeService(), workspace="haber").handle(
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "search", "arguments": {"query": "x"}}},
+            client="oauth:1a2b3c4d")
+        attrs = spans()["tool.search"].attributes
+        assert attrs["rag.workspace"] == "haber" and attrs["rag.client"] == "oauth:1a2b3c4d"
 
     def test_tool_error_span(self, spans):
         response = srv.MCPServer(FakeService()).handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",

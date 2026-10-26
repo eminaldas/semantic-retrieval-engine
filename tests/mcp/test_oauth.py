@@ -7,6 +7,7 @@ import urllib.request
 import pytest
 
 from backend.mcp import http_server
+from backend.mcp.audit import AuditLog
 from backend.mcp.oauth import ACCESS_TTL, MAX_FAILED_LOGINS, OAuthError, OAuthProvider, pkce_challenge
 from backend.mcp.server import MCPServer
 
@@ -234,10 +235,12 @@ class WorkspaceService(FakeService):
 
 
 @pytest.fixture
-def ws_url():
+def ws_url(tmp_path):
     oauth = OAuthProvider(PASSWORD)
-    httpd = http_server.build_server(MCPServer(FakeService()), "t" * 32, port=0, oauth=oauth, public_url=PUBLIC,
-                                     workspaces={"haber": MCPServer(WorkspaceService(), workspace="haber")})
+    log = AuditLog(str(tmp_path / "audit.jsonl"))
+    httpd = http_server.build_server(MCPServer(FakeService(), audit=log), "t" * 32, port=0, oauth=oauth,
+                                     public_url=PUBLIC,
+                                     workspaces={"haber": MCPServer(WorkspaceService(), workspace="haber", audit=log)})
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     yield f"http://127.0.0.1:{httpd.server_address[1]}"
@@ -272,6 +275,17 @@ def test_workspace_token_only_opens_its_workspace(ws_url):
     assert _search(ws_url, "/w/haber/mcp", {"Authorization": f"Bearer {access}"})[2] == "haber: x"
     status, headers, _ = _search(ws_url, "/mcp", {"Authorization": f"Bearer {access}"})
     assert status == 401 and 'error="invalid_token"' in headers["WWW-Authenticate"]
+
+
+def test_audit_log_names_workspace_and_client_without_content(ws_url, tmp_path):
+    _, access = _login(ws_url, WS_RESOURCE)
+    _search(ws_url, "/w/haber/mcp", {"Authorization": f"Bearer {access}"})
+    _search(ws_url, "/mcp", {"X-API-Key": "t" * 32})
+    lines = (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+    ws, admin = (json.loads(line) for line in lines)
+    assert ws["workspace"] == "haber" and ws["client"].startswith("oauth:") and ws["name"] == "search" and ws["ok"]
+    assert admin["workspace"] == "*" and admin["client"] == "apikey"
+    assert access not in lines[0] and '"x"' not in lines[0]  # token ve sorgu gunluge girmez
 
 
 def test_admin_token_and_static_key_do_not_open_workspaces(ws_url):

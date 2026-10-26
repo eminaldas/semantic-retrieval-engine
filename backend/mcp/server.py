@@ -9,6 +9,7 @@ Calistirma: python -m backend.mcp.server"""
 
 import json
 import sys
+import time
 import traceback
 
 from backend.shared import tracing
@@ -165,19 +166,25 @@ WRITE_TOOLS = {"add_note", "add_document", "sync_project"}
 
 
 class MCPServer:
-    def __init__(self, service, instructions=None, workspace=None):
-        """instructions: workspace'e ozel talimat (config); genel talimatin sonuna eklenir."""
+    def __init__(self, service, instructions=None, workspace=None, audit=None):
+        """instructions: workspace'e ozel talimat (config); genel talimatin sonuna eklenir.
+        audit: AuditLog (audit.py); her arac ve prompt cagrisi icerik olmadan kaydedilir."""
         self.service = service
+        self.workspace = workspace
+        self.audit = audit
         header = f"Bu baglanti '{workspace}' workspace'ine aittir; yalnizca onun projelerini gorur. " if workspace else ""
         self.instructions = INSTRUCTIONS + (f"\n\n{header}{instructions or ''}".rstrip() if header or instructions else "")
         scope = getattr(service, "scope", None)
         # Salt okunur workspace'te yazma araclari listede bile gorunmez (model denemeye kalkmasin).
         hidden = WRITE_TOOLS if scope is not None and scope.read_only else set()
+        if scope is not None and not scope.external_llm:
+            hidden = hidden | {"ask"}  # dis LLM kapali: belge metni Gemini'ye gitmez
         self.tools = [t for t in TOOLS if t["name"] not in hidden]
         self._allowed_args = {name: args for name, args in _ALLOWED_ARGS.items() if name not in hidden}
 
-    def handle(self, message):
-        """Tek bir JSON-RPC mesajini isler. Bildirimler (id'siz) icin None doner."""
+    def handle(self, message, client=None):
+        """Tek bir JSON-RPC mesajini isler. Bildirimler (id'siz) icin None doner.
+        client: istemci etiketi (orn. 'oauth:1a2b3c4d'); izlere ve denetim gunlugune yazilir."""
         if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
             return _error(None, -32600, "Invalid Request")
         method = message.get("method")
@@ -192,11 +199,11 @@ class MCPServer:
         if method == "tools/list":
             return _result(msg_id, {"tools": self.tools})
         if method == "tools/call":
-            return _result(msg_id, self._call_tool(params))
+            return _result(msg_id, self._call_tool(params, client))
         if method == "prompts/list":
             return _result(msg_id, {"prompts": PROMPTS})
         if method == "prompts/get":
-            return self._get_prompt(msg_id, params)
+            return self._get_prompt(msg_id, params, client)
         return _error(msg_id, -32601, f"Method not found: {method}")
 
     def _initialize(self, params):
@@ -209,41 +216,64 @@ class MCPServer:
             "instructions": self.instructions,
         }
 
-    def _get_prompt(self, msg_id, params):
+    def _labels(self, client):
+        return {"rag.workspace": self.workspace or "*", "rag.client": client}
+
+    def _record(self, kind, name, project, client, started, ok, chars=0, error_kind=None):
+        if self.audit is not None:
+            self.audit.write(workspace=self.workspace or "*", client=client, kind=kind, name=name,
+                             project=project[:64] if isinstance(project, str) else None, ok=ok, chars=chars,
+                             ms=round((time.monotonic() - started) * 1000), error=error_kind)
+
+    def _get_prompt(self, msg_id, params, client=None):
         if params.get("name") != "devam-et":
             return _error(msg_id, -32602, f"Bilinmeyen prompt: {params.get('name')}")
         project = (params.get("arguments") or {}).get("project") or None
-        with tracing.span("prompt.devam-et", tracing.TOOL, **{"input.value": project or ""}) as span:
+        started = time.monotonic()
+        with tracing.span("prompt.devam-et", tracing.TOOL, **{"input.value": project or ""},
+                          **self._labels(client)) as span:
             try:
                 text = CONTINUE_TEXT + self.service.brief(project=project)
             except (ValueError, KeyError) as exc:
                 span.set("rag.error_kind", "input").error(exc)
+                self._record("prompt", "devam-et", project, client, started, ok=False, error_kind="input")
                 return _error(msg_id, -32602, str(exc))
+        self._record("prompt", "devam-et", project, client, started, ok=True, chars=len(text))
         return _result(msg_id, {"description": "Kalinan yerden devam",
                                 "messages": [{"role": "user", "content": {"type": "text", "text": text}}]})
 
-    def _call_tool(self, params):
+    def _call_tool(self, params, client=None):
         name = params.get("name")
         args = params.get("arguments") or {}
+        started = time.monotonic()
         if name not in self._allowed_args:
+            # gizli araclar (salt okunur workspace'te yazma, dis LLM kapaliyken ask) denemesi de kayda gecer
+            self._record("tool", str(name)[:40], args.get("project") if isinstance(args, dict) else None, client,
+                         started, ok=False, error_kind="unknown_tool")
             return _tool_text(f"Bilinmeyen arac: {name}", is_error=True)
         unknown = set(args) - self._allowed_args[name]
         if unknown:
+            self._record("tool", name, args.get("project"), client, started, ok=False, error_kind="unknown_args")
             return _tool_text(f"Bilinmeyen parametre(ler): {', '.join(sorted(unknown))}", is_error=True)
         params = json.dumps(args, ensure_ascii=False)
+        error_kind = None
         with tracing.span(f"tool.{name}", tracing.TOOL, **{"tool.name": name, "tool.parameters": params,
-                                                           "input.value": tracing.clip(params)}) as span:
+                                                           "input.value": tracing.clip(params)},
+                          **self._labels(client)) as span:
             try:
                 text, is_error = getattr(self.service, name)(**args), False
             except (ValueError, KeyError, TypeError) as exc:
-                text, is_error = f"Hata: {exc}", True
+                text, is_error, error_kind = f"Hata: {exc}", True, "input"
                 span.set("rag.error_kind", "input").error(exc)
             except Exception as exc:  # Qdrant kapali vb. - istemciye anlamli mesaj, ayrinti stderr'e
                 traceback.print_exc(file=sys.stderr)
                 text, is_error = f"Beklenmeyen hata ({type(exc).__name__}): {exc}. Qdrant ayakta mi? (docker compose up -d)", True
+                error_kind = "internal"
                 span.set("rag.error_kind", "internal").error(exc)
             span.set("output.value", tracing.clip(text)).set("rag.output_chars", len(text))
-            return _tool_text(text, is_error=is_error)
+        self._record("tool", name, args.get("project"), client, started, ok=not is_error, chars=len(text),
+                     error_kind=error_kind)
+        return _tool_text(text, is_error=is_error)
 
 
 def _result(msg_id, result):

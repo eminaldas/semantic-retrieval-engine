@@ -5,12 +5,15 @@
         "description": "FactProbe calismalari",
         "projects": {"factprobe": "write", "fake-news": "read"},
         "home": "factprobe",
-        "instructions": "Bu workspace'e ozel kurallar..."
+        "instructions": "Bu workspace'e ozel kurallar...",
+        "external_llm": true,
+        "ask_daily_usd": 0.5
       }
     }
 
 'home' notlarin yazildigi ve proje verilmeyen cagrilarda kullanilan projedir; verilmezse tek yazilabilir
-proje. Hatali bolum sunucuyu actirmaz: yanlis yazilmis bir alan sessizce genis yetki vermesin.
+proje. 'external_llm': false ise ask araci (Gemini) bu workspace'te kapalidir. 'ask_daily_usd' ask icin
+gunluk harcama siniridir (sunucu yeniden baslayinca sayac sifirlanir). Hatali bolum sunucuyu actirmaz: yanlis yazilmis bir alan sessizce genis yetki vermesin.
 
 Kontrol: python -m backend.knowledge.workspaces"""
 
@@ -24,7 +27,7 @@ from backend.knowledge.scope import Scope
 SECTION = "_workspaces"
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")  # /w/<ad>/mcp adresinde kullanilir
 ROLES = ("read", "write")
-FIELDS = {"description", "projects", "home", "instructions"}
+FIELDS = {"description", "projects", "home", "instructions", "external_llm", "ask_daily_usd"}
 MAX_INSTRUCTIONS_CHARS = 2000
 
 
@@ -53,7 +56,8 @@ def load_workspaces(config):
         roles = raw["projects"]
         write = [p for p, role in roles.items() if role == "write"]
         home = raw.get("home") or (write[0] if len(write) == 1 else None)
-        scope = Scope.workspace(name, read=[p for p, role in roles.items() if role == "read"], write=write, default=home)
+        scope = Scope.workspace(name, read=[p for p, role in roles.items() if role == "read"], write=write, default=home,
+                                external_llm=raw.get("external_llm", True), ask_daily_usd=raw.get("ask_daily_usd"))
         result[name] = Workspace(name, scope, raw.get("description", ""), raw.get("instructions", ""))
     if errors:
         raise ValueError(f"{SECTION} hatali:\n- " + "\n- ".join(errors))
@@ -80,6 +84,11 @@ def _check(name, raw, known):
     for key in ("description", "instructions"):
         if key in raw and not isinstance(raw[key], str):
             problems.append(f"'{key}' metin olmali")
+    if "external_llm" in raw and not isinstance(raw["external_llm"], bool):
+        problems.append("'external_llm' true ya da false olmali")
+    budget = raw.get("ask_daily_usd")
+    if budget is not None and (isinstance(budget, bool) or not isinstance(budget, (int, float)) or budget < 0):
+        problems.append("'ask_daily_usd' sifir ya da pozitif bir sayi olmali")
     if len(raw.get("instructions") or "") > MAX_INSTRUCTIONS_CHARS:
         problems.append(f"'instructions' en fazla {MAX_INSTRUCTIONS_CHARS} karakter")
     return problems
@@ -91,6 +100,10 @@ def describe(workspace):
     for project in sorted(scope.readable):
         role = "yazar" if scope.can_write(project) else "okur"
         lines.append(f"  - {project} ({role}" + (", ev projesi)" if project == scope.default else ")"))
+    if not scope.external_llm:
+        lines.append("  dis LLM kapali (ask yok)")
+    elif scope.ask_daily_usd is not None:
+        lines.append(f"  ask gunluk siniri: ${scope.ask_daily_usd:g}")
     if workspace.instructions:
         lines.append(f"  talimat: {len(workspace.instructions)} karakter")
     return "\n".join(lines)

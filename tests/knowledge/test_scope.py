@@ -174,3 +174,36 @@ def test_brief_lists_live_notes_and_recent_docs_within_scope():
     assert client.filters[0].must[0].match.any == ["b", "c"]
     with pytest.raises(ValueError):
         service.brief(project="a")
+
+
+class _PricedAgent:
+    def __init__(self, service, project=None):
+        pass
+
+    def ask(self, question):
+        from backend.knowledge.agent import AgentResult
+        return AgentResult("cevap [a.md]", prompt_tokens=200_000, output_tokens=1_000, seconds=1.0)
+
+
+def test_external_llm_off_hides_and_blocks_ask():
+    view = _service(Scope.workspace("w", read=["b"], external_llm=False))
+    view.agent_factory = _PricedAgent
+    with pytest.raises(ValueError, match="dis LLM kapali"):
+        view.ask("soru")
+    names = {t["name"] for t in MCPServer(view).handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]}
+    assert "ask" not in names and "search" in names
+
+
+def test_ask_daily_budget_is_per_workspace_and_day():
+    admin = _service()
+    view = admin.scoped(Scope.workspace("w", read=["b"], ask_daily_usd=0.0001))
+    other = admin.scoped(Scope.workspace("v", read=["c"], ask_daily_usd=0.0001))
+    for s in (view, other):
+        s.agent_factory = _PricedAgent
+    admin.today = view.today = other.today = lambda: "2026-10-26"
+    assert view.ask("soru").startswith("cevap")
+    with pytest.raises(ValueError, match="gunluk ask siniri"):
+        view.ask("soru")
+    assert other.ask("soru").startswith("cevap")  # baska workspace'in sayaci ayri
+    view.today = lambda: "2026-10-27"
+    assert view.ask("soru").startswith("cevap")  # yeni gun

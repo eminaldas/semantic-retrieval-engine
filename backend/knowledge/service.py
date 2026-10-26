@@ -49,6 +49,8 @@ class KnowledgeService:
         self.sync_lock = threading.Lock()  # elle sync, add_note ve izleyici ayni anda indekslemesin
         self.last_sync = {}  # proje -> (zaman, ozet); index_status gosterir
         self.agent_factory = None  # ask araci; testler sahte ajan verir
+        self.ask_spend = {}  # (workspace, gun) -> ask harcamasi ($); scoped kopyalar paylasir
+        self.today = lambda: datetime.now().date().isoformat()
         self.project_hints = True  # proje verilmeyen aramada baska projeye uyma notu (routing.py)
 
     def scoped(self, scope):
@@ -165,9 +167,16 @@ class KnowledgeService:
 
         if not question or not question.strip():
             raise ValueError("question bos olamaz")
+        if not self.scope.external_llm:
+            raise ValueError("Bu workspace'te dis LLM kapali; ask kullanilamaz. search ve get_document ile cevaplayin.")
+        key = (self.scope.name, self.today())
+        budget = self.scope.ask_daily_usd
+        if budget is not None and self.ask_spend.get(key, 0.0) >= budget:
+            raise ValueError(f"Bu workspace'in gunluk ask siniri (${budget:g}) doldu; yarina kadar search kullanin.")
         if self.agent_factory is None:
             self.agent_factory = ResearchAgent
         result = self.agent_factory(self, project=project).ask(question)
+        self.ask_spend[key] = self.ask_spend.get(key, 0.0) + (cost_usd(result) or 0.0)
         sources = ", ".join(result.citations) or "yok"
         footer = (f"\n\n[Kaynaklar: {sources} · {len(result.steps)} arama/okuma · {result.seconds:.0f} sn"
                   f" · ~${cost_usd(result) or 0:.4f}]")

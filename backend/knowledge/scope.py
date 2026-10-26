@@ -13,19 +13,22 @@ class Scope:
     readable: frozenset | None = None  # None = tum projeler (yonetici)
     writable: frozenset | None = None  # None = okunabilen her proje
     default: str | None = None  # proje verilmeyen cagrilarda kullanilir; yazma araclarinda ev projesi
+    external_llm: bool = True  # False: belge metni dis LLM'e (Gemini) gitmez, ask araci kapali
+    ask_daily_usd: float | None = None  # ask icin gunluk harcama siniri; None = sinirsiz
 
     @classmethod
     def admin(cls):
         return cls()
 
     @classmethod
-    def workspace(cls, name, read=(), write=(), default=None):
+    def workspace(cls, name, read=(), write=(), default=None, external_llm=True, ask_daily_usd=None):
         """read/write: proje adlari; yazilabilen proje okunabilir de sayilir."""
         writable = frozenset(write)
         readable = frozenset(read) | writable
         if default is not None and default not in readable:
             raise ValueError(f"'{name}' workspace'inin varsayilan projesi '{default}' okunabilir projeleri arasinda degil")
-        return cls(name=name, readable=readable, writable=writable, default=default)
+        return cls(name=name, readable=readable, writable=writable, default=default, external_llm=external_llm,
+                   ask_daily_usd=ask_daily_usd)
 
     @property
     def is_admin(self):
