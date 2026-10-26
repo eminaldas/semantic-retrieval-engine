@@ -189,22 +189,9 @@ def make_references(project, questions, out_path, runtime=None):
         reader.close()
 
 
-def run(project, golden_path, label="", use_ask=False, top_k=TOP_K, runtime=None, limit=0):
-    from backend.knowledge import eval as golden
-    from backend.knowledge.agent import ResearchAgent, cost_usd
-    from backend.knowledge.runtime import Runtime
-    from backend.knowledge.service import KnowledgeService
-    from backend.shared.paths import PROJECT_ROOT
+def _run_records(records, rows, service, project, top_k, gemini, agent):
+    from backend.knowledge.agent import cost_usd
 
-    service = KnowledgeService(runtime or Runtime())
-    project = service.resolve_project(project)
-    records = golden.load_golden_set(golden_path)
-    records = records[:limit] if limit else records
-    gemini = golden._gemini_client()
-    agent = ResearchAgent(service, project=project) if use_ask else None
-    tracing.init_tracing("rag-eval")
-    service.search("isinma", project=project, top_k=1)
-    rows, agent_cost = [], 0.0
     for record in records:
         points = record["points"]
         start = time.perf_counter()
@@ -219,7 +206,7 @@ def run(project, golden_path, label="", use_ask=False, top_k=TOP_K, runtime=None
         row["judge_error"] = verdict["error"]
         if agent:
             result = agent.ask(record["question"])
-            agent_cost += cost_usd(result) or 0.0
+            row["_cost"] = cost_usd(result) or 0.0
             answer_verdict = judge_coverage(gemini, record["question"], points, result.answer)
             row["answer_coverage"] = coverage(answer_verdict)
             row["answer_source_recall"] = source_recall(points, result.citations)
@@ -230,8 +217,33 @@ def run(project, golden_path, label="", use_ask=False, top_k=TOP_K, runtime=None
         rows.append(row)
         print(f"{record['id']} baglam={row['context_coverage']} cevap={row.get('answer_coverage')}  "
               f"{record['question']}", flush=True)
+
+
+def run(project, golden_path, label="", use_ask=False, top_k=TOP_K, runtime=None, limit=0):
+    from backend.knowledge import eval as golden
+    from backend.knowledge.agent import ResearchAgent
+    from backend.knowledge.runtime import Runtime
+    from backend.knowledge.service import KnowledgeService
+    from backend.shared.paths import PROJECT_ROOT
+
+    service = KnowledgeService(runtime or Runtime())
+    project = service.resolve_project(project)
+    records = golden.load_golden_set(golden_path)
+    records = records[:limit] if limit else records
+    gemini = golden._gemini_client()
+    agent = ResearchAgent(service, project=project) if use_ask else None
+    tracing.init_tracing("rag-eval")
+    service.search("isinma", project=project, top_k=1)
+    rows, error = [], None
+    try:
+        _run_records(records, rows, service, project, top_k, gemini, agent)
+    except Exception as exc:  # kredi bitmesi gibi: o ana kadarki satirlar kaybolmasin
+        error = f"{type(exc).__name__}: {exc}"
+        print(f"Olcum yarida kaldi: {error}", flush=True)
+    agent_cost = sum(r.pop("_cost", 0.0) for r in rows)
     summary = aggregate(rows)
     summary["agent_cost_usd"] = round(agent_cost, 4)
+    summary["error"] = error
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     out = os.path.join(PROJECT_ROOT, "artifacts", "knowledge_eval", f"{project}_overview.jsonl")
     os.makedirs(os.path.dirname(out), exist_ok=True)
