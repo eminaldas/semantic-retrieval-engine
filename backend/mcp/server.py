@@ -142,11 +142,17 @@ TOOLS = [
 ]
 
 _ALLOWED_ARGS = {t["name"]: set(t["inputSchema"].get("properties", {})) for t in TOOLS}
+WRITE_TOOLS = {"add_note", "add_document", "sync_project"}
 
 
 class MCPServer:
     def __init__(self, service):
         self.service = service
+        scope = getattr(service, "scope", None)
+        # Salt okunur workspace'te yazma araclari listede bile gorunmez (model denemeye kalkmasin).
+        hidden = WRITE_TOOLS if scope is not None and scope.read_only else set()
+        self.tools = [t for t in TOOLS if t["name"] not in hidden]
+        self._allowed_args = {name: args for name, args in _ALLOWED_ARGS.items() if name not in hidden}
 
     def handle(self, message):
         """Tek bir JSON-RPC mesajini isler. Bildirimler (id'siz) icin None doner."""
@@ -162,7 +168,7 @@ class MCPServer:
         if method == "ping":
             return _result(msg_id, {})
         if method == "tools/list":
-            return _result(msg_id, {"tools": TOOLS})
+            return _result(msg_id, {"tools": self.tools})
         if method == "tools/call":
             return _result(msg_id, self._call_tool(params))
         return _error(msg_id, -32601, f"Method not found: {method}")
@@ -180,9 +186,9 @@ class MCPServer:
     def _call_tool(self, params):
         name = params.get("name")
         args = params.get("arguments") or {}
-        if name not in _ALLOWED_ARGS:
+        if name not in self._allowed_args:
             return _tool_text(f"Bilinmeyen arac: {name}", is_error=True)
-        unknown = set(args) - _ALLOWED_ARGS[name]
+        unknown = set(args) - self._allowed_args[name]
         if unknown:
             return _tool_text(f"Bilinmeyen parametre(ler): {', '.join(sorted(unknown))}", is_error=True)
         params = json.dumps(args, ensure_ascii=False)

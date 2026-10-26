@@ -66,9 +66,14 @@ def build_point(record, dense_vector):
 
 def project_filter(project=None, source_id=None, doc_type=None, path_prefix=None, modified_after=None,
                    modified_before=None):
-    """path_prefix: klasor ('graf/' ya da 'graf') ya da tek dosya ('graf/x.md').
+    """project: tek proje adi ya da birkac proje (workspace kapsami; herhangi biriyle eslesir).
+    path_prefix: klasor ('graf/' ya da 'graf') ya da tek dosya ('graf/x.md').
     modified_after/before: 'YYYY-MM-DD' (iki uc dahil)."""
     conditions = []
+    if isinstance(project, (list, tuple, set, frozenset)):
+        # Bos liste "hicbir proje" demek; filtresiz (tum projeler) aramaya dusmemeli.
+        conditions.append(models.FieldCondition(key="project", match=models.MatchAny(any=sorted(project))))
+        project = None
     for key, value in (("project", project), ("source_id", source_id), ("doc_type", doc_type)):
         if value:
             conditions.append(models.FieldCondition(key=key, match=models.MatchValue(value=value)))
