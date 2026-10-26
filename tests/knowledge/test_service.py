@@ -93,3 +93,27 @@ def test_search_hint_can_be_turned_off(monkeypatch):
     service, seen = _search_service(monkeypatch, "Not: b")
     service.project_hints = False
     assert service.search("soru") == "SONUC" and "hint_args" not in seen
+
+
+
+def test_service_search_options_are_accepted_by_search(monkeypatch):
+    """service.search'in search.search'e gecirdigi her secenek imzada olmali (kind eksikti, canli arama dustu)."""
+    import inspect
+
+    from backend.knowledge import search
+
+    accepted = set(inspect.signature(search.search).parameters)
+    seen = {}
+    service = _service({"p": {"root": "/x"}})
+    service.project_hints = False
+    monkeypatch.setattr(service, "mark_stale", lambda results: results)
+    monkeypatch.setattr(search, "search", lambda *a, **k: seen.update(k) or [])
+
+    class Runtime:
+        def client(self): return None
+        def embedder(self): return None
+        def reranker(self): return None
+
+    service.runtime = Runtime()
+    service.search("soru", kind="decision", path_prefix="hat/")
+    assert set(seen) <= accepted and seen["kind"] == "decision"
