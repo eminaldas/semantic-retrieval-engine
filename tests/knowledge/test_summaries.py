@@ -58,3 +58,53 @@ def test_summarize_project_caches_unchanged_nodes(tmp_path, monkeypatch):
     again = sm.Summarizer("p", client=gemini, manifest_dir=str(tmp_path))
     sm.summarize_project(docs, again, log=lambda m: None)
     assert again.calls == 3  # B, hat/ ve proje yeniden; A ve K onbellekten
+
+
+def test_build_indexes_summaries_next_to_chunks_and_remove_drops_only_them(tmp_path, monkeypatch):
+    """Uctan uca: bellek ici Qdrant, sahte embedder/reranker/Gemini."""
+    import hashlib
+    import re
+
+    import numpy as np
+    from qdrant_client import QdrantClient
+
+    from backend.knowledge import projects, search, store
+    from backend.shared import gemini_usage
+
+    monkeypatch.setattr(gemini_usage, "log_usage", lambda *a, **k: None)
+
+    def words(text):
+        return set(re.findall(r"\w+", text.lower()))
+
+    class Embedder:
+        def encode(self, texts):
+            out = []
+            for text in ([texts] if isinstance(texts, str) else texts):
+                v = np.zeros(32)
+                for w in words(text):
+                    v[int(hashlib.md5(w.encode()).hexdigest(), 16) % 32] += 1
+                out.append(v / (np.linalg.norm(v) or 1))
+            return out[0] if isinstance(texts, str) else np.array(out)
+
+    class Reranker:
+        def predict(self, pairs):
+            return [len(words(q) & words(t)) / len(words(q)) for q, t in pairs]
+
+    client, embedder = QdrantClient(":memory:"), Embedder()
+    store.ensure_collection(client, 32)
+    for rel, text in {"K.md": "kok belge", "hat/A.md": "nicemleme hiz", "hat/B.md": "esik secimi"}.items():
+        records = projects.build_chunk_records("p", rel, text, [(text, "satir 1-1")], mtime=1.7e9)
+        store.upsert_records(client, records, embedder.encode([r["embed_text"] for r in records]))
+
+    summarizer = sm.Summarizer("p", client=FakeGemini(), manifest_dir=str(tmp_path))
+    assert sm.build("p", client, embedder, summarizer, log=lambda m: None) == 5
+
+    def paths(**kw):
+        return {r["path"] for r in search.search(client, embedder, Reranker(), "ozet hiz", project="p", top_k=10, **kw)}
+
+    assert {"_ozet/", "_ozet/hat/", "_ozet/hat/A.md", "hat/A.md"} <= paths()
+    assert not any(p.startswith("_ozet/") for p in paths(doc_type="doc"))
+    assert "_ozet/hat/" in paths(path_prefix="hat/") and "_ozet/" not in paths(path_prefix="hat/")
+
+    sm.remove(client, "p")
+    assert paths() == {"K.md", "hat/A.md", "hat/B.md"}
