@@ -117,3 +117,27 @@ def test_service_search_options_are_accepted_by_search(monkeypatch):
     service.runtime = Runtime()
     service.search("soru", kind="decision", path_prefix="hat/")
     assert set(seen) <= accepted and seen["kind"] == "decision"
+
+
+def test_overview_shows_project_summary_and_hides_summary_rows(monkeypatch):
+    from backend.knowledge import store
+
+    rows = [{"source_id": "p:hat/A.md", "path": "hat/A.md", "doc_type": "doc", "modified_at": "2026-10-01T00:00:00",
+             "section": "A", "superseded_by": None},
+            {"source_id": "p:_ozet/", "path": "_ozet/", "doc_type": "summary", "modified_at": None,
+             "section": "Proje ozeti: p", "superseded_by": None},
+            {"source_id": "p:_ozet/hat/", "path": "_ozet/hat/", "doc_type": "summary", "modified_at": None,
+             "section": "Klasor ozeti: hat/", "superseded_by": None}]
+
+    def fake_scroll(client, flt, fields):
+        return [{"text": "Proje ozeti metni"}] if fields == ("text",) else rows
+
+    monkeypatch.setattr(store, "scroll_all", fake_scroll)
+
+    class Runtime:
+        def client(self): return None
+
+    service = KnowledgeService(runtime=Runtime(), config_loader=lambda: {"p": {"root": "/x"}})
+    text = service.overview("p")
+    assert "1 belge, 0 not, 1 parca." in text and "Ozet: Proje ozeti metni" in text
+    assert "Klasor ozetleri (get_document ile): _ozet/hat/" in text and "- hat/ 1 belge" in text

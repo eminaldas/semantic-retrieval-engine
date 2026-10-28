@@ -8,7 +8,7 @@ import threading
 from collections import Counter
 from datetime import datetime, timezone
 
-from backend.knowledge import projects, routing, search, store, sync
+from backend.knowledge import projects, proposals, routing, search, store, summaries, sync
 from backend.knowledge.scope import Scope
 from backend.shared import tracing
 
@@ -54,6 +54,7 @@ class KnowledgeService:
         self.ask_spend = {}  # (workspace, gun) -> ask harcamasi ($); scoped kopyalar paylasir
         self.today = lambda: datetime.now().date().isoformat()
         self.project_hints = True  # proje verilmeyen aramada baska projeye uyma notu (routing.py)
+        self.proposals_file = proposals.PROPOSALS_FILE
 
     def scoped(self, scope):
         """Ayni runtime, kilit ve senkron durumunu paylasan, yalnizca scope'un projelerini goren kopya.
@@ -120,6 +121,11 @@ class KnowledgeService:
             return f"- {name}: {settings.get('description', '')} ({settings.get('root')})".rstrip()
 
         return "Tanimli projeler:\n" + "\n".join(line(name, settings) for name, settings in sorted(config.items()))
+
+    def propose_project(self, name, folder, description=""):
+        """Workspace'in project_base klasoru altindaki bir klasoru yeni proje olarak onerir; proje ancak
+        kullanici cihazda onaylayinca eklenir (proposals.py)."""
+        return proposals.propose(self.scope, self._config(), name, folder, description, path=self.proposals_file)
 
     # --- arama -------------------------------------------------------------
 
@@ -219,7 +225,7 @@ class KnowledgeService:
         project = self._project_filter(self.resolve_project(project))
         rows = store.scroll_all(self.runtime.client(), store.project_filter(project=project),
                                 ("source_id", "path", "doc_type", "modified_at"))
-        sources = store.summarize_sources(rows)
+        sources = [s for s in store.summarize_sources(rows) if s["doc_type"] != summaries.DOC_TYPE]
         if not sources:
             return "Indekslenmis belge yok. Once sync_project calistirin."
         lines = [f"- {s['path']} ({s['doc_type']}, {s['chunk_count']} parca, degisiklik {(s['modified_at'] or '?')[:10]})" for s in sources]
@@ -242,7 +248,7 @@ class KnowledgeService:
         project = self._require_project(project)
         rows = store.scroll_all(self.runtime.client(), store.project_filter(project=project),
                                 ("source_id", "path", "doc_type", "modified_at", "section", "superseded_by"))
-        sources = store.summarize_sources(rows)
+        sources = [s for s in store.summarize_sources(rows) if s["doc_type"] != summaries.DOC_TYPE]
         if not sources:
             return f"{project}: indekslenmis belge yok. Once sync_project calistirin."
         sections = {}
@@ -253,9 +259,20 @@ class KnowledgeService:
         notes = [s for s in sources if s["doc_type"] == "note"]
         folders = Counter(s["path"].split("/")[0] + "/" if "/" in s["path"] else "(kok)" for s in docs)
         description = self._projects().get(project, {}).get("description", "")
+        summary_rows = {r["path"]: r for r in rows if r.get("doc_type") == summaries.DOC_TYPE}
         lines = [f"# {project}" + (f": {description}" if description else ""),
-                 f"{len(docs)} belge, {len(notes)} not, {len(rows)} parca.", "", "Klasorler:"]
+                 f"{len(docs)} belge, {len(notes)} not, {len(rows) - len(summary_rows)} parca."]
+        project_summary = summary_rows.get(summaries.PREFIX)
+        if project_summary:
+            text = store.scroll_all(self.runtime.client(), store.project_filter(source_id=project_summary["source_id"]),
+                                    ("text",))
+            if text:
+                lines += ["", "Ozet: " + text[0]["text"].strip()]
+        lines += ["", "Klasorler:"]
         lines += [f"- {folder} {count} belge" for folder, count in sorted(folders.items())]
+        folder_summaries = sorted(p for p in summary_rows if p.endswith("/") and p != summaries.PREFIX)
+        if folder_summaries:
+            lines.append("Klasor ozetleri (get_document ile): " + ", ".join(folder_summaries))
 
         def latest(items, n):
             return sorted(items, key=lambda s: s["modified_at"] or "", reverse=True)[:n]
