@@ -8,7 +8,7 @@ import threading
 from collections import Counter
 from datetime import datetime, timezone
 
-from backend.knowledge import projects, routing, search, store, summaries, sync
+from backend.knowledge import projects, proposals, routing, search, store, summaries, sync
 from backend.knowledge.scope import Scope
 from backend.shared import tracing
 
@@ -54,6 +54,7 @@ class KnowledgeService:
         self.ask_spend = {}  # (workspace, gun) -> ask harcamasi ($); scoped kopyalar paylasir
         self.today = lambda: datetime.now().date().isoformat()
         self.project_hints = True  # proje verilmeyen aramada baska projeye uyma notu (routing.py)
+        self.proposals_file = proposals.PROPOSALS_FILE
 
     def scoped(self, scope):
         """Ayni runtime, kilit ve senkron durumunu paylasan, yalnizca scope'un projelerini goren kopya.
@@ -120,6 +121,11 @@ class KnowledgeService:
             return f"- {name}: {settings.get('description', '')} ({settings.get('root')})".rstrip()
 
         return "Tanimli projeler:\n" + "\n".join(line(name, settings) for name, settings in sorted(config.items()))
+
+    def propose_project(self, name, folder, description=""):
+        """Workspace'in project_base klasoru altindaki bir klasoru yeni proje olarak onerir; proje ancak
+        kullanici cihazda onaylayinca eklenir (proposals.py)."""
+        return proposals.propose(self.scope, self._config(), name, folder, description, path=self.proposals_file)
 
     # --- arama -------------------------------------------------------------
 

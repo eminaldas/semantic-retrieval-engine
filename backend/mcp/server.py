@@ -179,6 +179,21 @@ TOOLS = [
         },
     },
     {
+        "name": "propose_project",
+        "description": ("Yeni bir repo/klasoru proje olarak onerir (orn. kullanici yeni bir repoya gecti). Klasor, izin "
+                        "verilen ana klasore gore goreli verilir. Proje hemen eklenmez: kullanici bilgisayarda onaylar, "
+                        "sonra project='<ad>' ile aranabilir. Yalnizca kullanici istediginde kullanin."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Proje adi: kucuk harf, rakam, '-' (orn. 'yeni-repo')"},
+                "folder": {"type": "string", "description": "Ana klasore gore goreli klasor (orn. 'yeni-repo' ya da 'isler/yeni-repo')"},
+                "description": {"type": "string", "description": "Projenin kisa aciklamasi"},
+            },
+            "required": ["name", "folder"],
+        },
+    },
+    {
         "name": "list_projects",
         "description": "Motora bagli projeleri listeler.",
         "inputSchema": {"type": "object", "properties": {}},
@@ -224,6 +239,8 @@ class MCPServer:
         hidden = WRITE_TOOLS if scope is not None and scope.read_only else set()
         if scope is not None and not scope.external_llm:
             hidden = hidden | {"ask"}  # dis LLM kapali: belge metni Gemini'ye gitmez
+        if scope is None or not scope.project_base:
+            hidden = hidden | {"propose_project"}  # yalnizca project_base tanimli workspace'lerde
         self.tools = [t for t in TOOLS if t["name"] not in hidden]
         self._allowed_args = {name: args for name, args in _ALLOWED_ARGS.items() if name not in hidden}
 

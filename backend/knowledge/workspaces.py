@@ -7,16 +7,20 @@
         "home": "factprobe",
         "instructions": "Bu workspace'e ozel kurallar...",
         "external_llm": true,
-        "ask_daily_usd": 0.5
+        "ask_daily_usd": 0.5,
+        "project_base": "C:\\Users\\emina\\Documents\\GitHub"
       }
     }
 
 'home' notlarin yazildigi ve proje verilmeyen cagrilarda kullanilan projedir; verilmezse tek yazilabilir
 proje. 'external_llm': false ise ask araci (Gemini) bu workspace'te kapalidir. 'ask_daily_usd' ask icin
-gunluk harcama siniridir (sunucu yeniden baslayinca sayac sifirlanir). Hatali bolum sunucuyu actirmaz: yanlis yazilmis bir alan sessizce genis yetki vermesin.
+gunluk harcama siniridir (sunucu yeniden baslayinca sayac sifirlanir). 'project_base' verilirse Claude bu klasorun
+altindaki bir klasoru yeni proje olarak onerebilir (propose_project); oneri ancak cihazda onaylaninca eklenir
+(python -m backend.knowledge.proposals). Hatali bolum sunucuyu actirmaz: yanlis yazilmis bir alan sessizce genis yetki vermesin.
 
 Kontrol: python -m backend.knowledge.workspaces"""
 
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -27,7 +31,7 @@ from backend.knowledge.scope import Scope
 SECTION = "_workspaces"
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")  # /w/<ad>/mcp adresinde kullanilir
 ROLES = ("read", "write")
-FIELDS = {"description", "projects", "home", "instructions", "external_llm", "ask_daily_usd"}
+FIELDS = {"description", "projects", "home", "instructions", "external_llm", "ask_daily_usd", "project_base"}
 MAX_INSTRUCTIONS_CHARS = 2000
 
 
@@ -57,7 +61,8 @@ def load_workspaces(config):
         write = [p for p, role in roles.items() if role == "write"]
         home = raw.get("home") or (write[0] if len(write) == 1 else None)
         scope = Scope.workspace(name, read=[p for p, role in roles.items() if role == "read"], write=write, default=home,
-                                external_llm=raw.get("external_llm", True), ask_daily_usd=raw.get("ask_daily_usd"))
+                                external_llm=raw.get("external_llm", True), ask_daily_usd=raw.get("ask_daily_usd"),
+                                project_base=raw.get("project_base"))
         result[name] = Workspace(name, scope, raw.get("description", ""), raw.get("instructions", ""))
     if errors:
         raise ValueError(f"{SECTION} hatali:\n- " + "\n- ".join(errors))
@@ -81,7 +86,7 @@ def _check(name, raw, known):
     home = raw.get("home")
     if home is not None and roles.get(home) != "write":
         problems.append(f"home '{home}' bu workspace'te 'write' rolunde bir proje olmali")
-    for key in ("description", "instructions"):
+    for key in ("description", "instructions", "project_base"):
         if key in raw and not isinstance(raw[key], str):
             problems.append(f"'{key}' metin olmali")
     if "external_llm" in raw and not isinstance(raw["external_llm"], bool):
@@ -89,6 +94,9 @@ def _check(name, raw, known):
     budget = raw.get("ask_daily_usd")
     if budget is not None and (isinstance(budget, bool) or not isinstance(budget, (int, float)) or budget < 0):
         problems.append("'ask_daily_usd' sifir ya da pozitif bir sayi olmali")
+    base = raw.get("project_base")
+    if isinstance(base, str) and not os.path.isabs(base):
+        problems.append("'project_base' tam yol olmali")
     if len(raw.get("instructions") or "") > MAX_INSTRUCTIONS_CHARS:
         problems.append(f"'instructions' en fazla {MAX_INSTRUCTIONS_CHARS} karakter")
     return problems
@@ -104,6 +112,8 @@ def describe(workspace):
         lines.append("  dis LLM kapali (ask yok)")
     elif scope.ask_daily_usd is not None:
         lines.append(f"  ask gunluk siniri: ${scope.ask_daily_usd:g}")
+    if scope.project_base:
+        lines.append(f"  yeni proje onerebilir: {scope.project_base} altindan")
     if workspace.instructions:
         lines.append(f"  talimat: {len(workspace.instructions)} karakter")
     return "\n".join(lines)
